@@ -1,0 +1,28 @@
+
+REPORTE DE ANÁLISIS EXPLORATORIO DE DATOS
+Minimarket - Sistema de Gestión Logística
+Fecha: 2025-06-14 16:47:44
+
+1. RESUMEN DE VENTAS
+-------------------
+- Día con más ventas: Monday
+- Hora pico de ventas: 17h
+
+2. PRODUCTOS TOP
+----------------
+Top 3 productos más vendidos:
+1. Desodorante Rexona - 5270 unidades
+2. Lentejas 500g - 5227 unidades
+3. Queso Fresco 250g - 5218 unidades
+
+3. ESTADO DE INVENTARIO
+----------------------
+- Productos sin stock: 0
+- Productos con stock bajo: 0
+- Productos que necesitan reorden: 1
+
+4. OBSERVACIONES
+---------------
+- Se han identificado patrones de venta consistentes por día de semana
+- Existe estacionalidad en ciertos productos
+- Se recomienda ajustar niveles de reorden basados en patrones históricos

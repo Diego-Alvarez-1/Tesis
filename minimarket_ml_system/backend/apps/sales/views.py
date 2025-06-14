@@ -137,8 +137,6 @@ class SaleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def dashboard_stats(self, request):
         """Estadísticas para dashboard"""
-        from datetime import datetime, timedelta
-        
         today = datetime.now().date()
         yesterday = today - timedelta(days=1)
         this_month = today.replace(day=1)
@@ -170,6 +168,15 @@ class SaleViewSet(viewsets.ModelViewSet):
             total=Sum('total')
         )
         
+        # Métodos de pago más usados
+        payment_methods = Sale.objects.filter(
+            sale_date__date__gte=today - timedelta(days=30),
+            status='COMPLETED'
+        ).values('payment_method').annotate(
+            count=Count('id'),
+            total=Sum('total')
+        ).order_by('-count')
+        
         return Response({
             'today': {
                 'sales_count': today_sales['count'] or 0,
@@ -182,7 +189,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             'this_month': {
                 'sales_count': month_sales['count'] or 0,
                 'total_amount': float(month_sales['total'] or 0)
-            }
+            },
+            'payment_methods': list(payment_methods)
         })
     
     @action(detail=False, methods=['get'])

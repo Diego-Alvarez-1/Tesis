@@ -56,6 +56,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
     permission_classes = []
+    
     def get_queryset(self):
         queryset = super().get_queryset()
         
@@ -231,7 +232,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         out_of_stock = len([p for p in Product.objects.filter(is_active=True) if p.stock_status == 'SIN_STOCK'])
         
         # Productos por categoría
-        from .models import Category
         categories_stats = []
         for category in Category.objects.filter(is_active=True):
             products_count = category.product_set.filter(is_active=True).count()
