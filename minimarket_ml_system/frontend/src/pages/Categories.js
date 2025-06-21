@@ -1,582 +1,281 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Container,
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Button,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  Avatar,
-  useTheme,
-  alpha,
-  Skeleton,
-  Switch,
-  FormControlLabel,
-  Tooltip,
-  Zoom,
-} from '@mui/material';
-import {
-  Add,
-  Edit,
-  Delete,
-  Category as CategoryIcon,
-  Inventory,
-  TrendingUp,
-  Visibility,
-  Store,
-  LocalOffer,
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import { categoryAPI } from '../services/api';
-import { useSnackbar } from 'notistack';
-
-const CategoryCard = ({ category, onEdit, onDelete, onViewProducts }) => {
-  const theme = useTheme();
-  
-  const categoryIcons = {
-    'Bebidas': '🥤',
-    'Abarrotes': '🛒',
-    'Lácteos': '🥛',
-    'Snacks': '🍿',
-    'Limpieza': '🧽',
-    'Panadería': '🍞',
-    'Frutas y Verduras': '🥬',
-    'Carnes y Embutidos': '🥩',
-    'Cuidado Personal': '🧴',
-    'Congelados': '🧊',
-  };
-  
-  const getIcon = () => categoryIcons[category.name] || '📦';
-  
-  return (
-    <Zoom in={true} style={{ transitionDelay: '100ms' }}>
-      <Card
-        sx={{
-          height: '100%',
-          position: 'relative',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          cursor: 'pointer',
-          '&:hover': {
-            transform: 'translateY(-8px)',
-            boxShadow: theme.shadows[12],
-          },
-        }}
-        onClick={() => onViewProducts(category)}
-      >
-        <CardContent sx={{ p: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Avatar
-                sx={{
-                  width: 56,
-                  height: 56,
-                  fontSize: '2rem',
-                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                }}
-              >
-                {getIcon()}
-              </Avatar>
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                  {category.name}
-                </Typography>
-                <Chip
-                  icon={<Inventory />}
-                  label={`${category.product_count || 0} productos`}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
-              </Box>
-            </Box>
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Tooltip title="Editar categoría">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(category);
-                  }}
-                  sx={{
-                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.2),
-                    },
-                  }}
-                >
-                  <Edit fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              
-              <Tooltip title="Eliminar categoría">
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete(category);
-                  }}
-                  sx={{
-                    bgcolor: alpha(theme.palette.error.main, 0.1),
-                    '&:hover': {
-                      bgcolor: alpha(theme.palette.error.main, 0.2),
-                    },
-                  }}
-                >
-                  <Delete fontSize="small" />
-                </IconButton>
-              </Tooltip>
-            </Box>
-          </Box>
-          
-          <Typography 
-            variant="body2" 
-            color="text.secondary" 
-            sx={{ 
-              mb: 3,
-              minHeight: 40,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-            }}
-          >
-            {category.description || 'Sin descripción disponible'}
-          </Typography>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Chip
-              label={category.is_active ? 'Activa' : 'Inactiva'}
-              color={category.is_active ? 'success' : 'default'}
-              size="small"
-              sx={{ fontWeight: 600 }}
-            />
-            
-            <Button
-              size="small"
-              startIcon={<Visibility />}
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewProducts(category);
-              }}
-              sx={{ textTransform: 'none' }}
-            >
-              Ver productos
-            </Button>
-          </Box>
-        </CardContent>
-      </Card>
-    </Zoom>
-  );
-};
-
-const CategoryForm = ({ open, onClose, category, onSaved }) => {
-  const { enqueueSnackbar } = useSnackbar();
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    is_active: true,
-  });
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (category) {
-      setFormData({
-        name: category.name || '',
-        description: category.description || '',
-        is_active: category.is_active ?? true,
-      });
-    } else {
-      setFormData({
-        name: '',
-        description: '',
-        is_active: true,
-      });
-    }
-  }, [category, open]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      enqueueSnackbar('El nombre es requerido', { variant: 'warning' });
-      return;
-    }
-
-    try {
-      setSaving(true);
-      
-      if (category) {
-        await categoryAPI.update(category.id, formData);
-        enqueueSnackbar('Categoría actualizada exitosamente', { variant: 'success' });
-      } else {
-        await categoryAPI.create(formData);
-        enqueueSnackbar('Categoría creada exitosamente', { variant: 'success' });
-      }
-      
-      onSaved();
-    } catch (error) {
-      enqueueSnackbar('Error al guardar categoría', { variant: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="sm" 
-      fullWidth
-      PaperProps={{ sx: { borderRadius: 2 } }}
-    >
-      <form onSubmit={handleSubmit}>
-        <DialogTitle sx={{ pb: 1 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <CategoryIcon />
-            {category ? 'Editar Categoría' : 'Nueva Categoría'}
-          </Box>
-        </DialogTitle>
-        
-        <DialogContent sx={{ pt: 2 }}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Nombre de la categoría"
-                value={formData.name}
-                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                required
-                autoFocus
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Descripción"
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Describe qué tipo de productos incluye esta categoría..."
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  />
-                }
-                label="Categoría activa"
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={saving}
-            sx={{ minWidth: 120 }}
-          >
-            {saving ? 'Guardando...' : (category ? 'Actualizar' : 'Crear')}
-          </Button>
-        </DialogActions>
-      </form>
-    </Dialog>
-  );
-};
+import { categoriesAPI, showAlert } from '../services/api';
 
 const Categories = () => {
-  const theme = useTheme();
-  const navigate = useNavigate();
-  const { enqueueSnackbar } = useSnackbar();
-  
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [categoryFormOpen, setCategoryFormOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    is_active: ''
+  });
+
+  const [categoryForm, setCategoryForm] = useState({
+    name: '',
+    description: '',
+    is_active: true
+  });
 
   useEffect(() => {
-    fetchCategories();
-  }, []);
+    loadCategories();
+  }, [filters]);
 
-  const fetchCategories = async () => {
+  const loadCategories = async () => {
     try {
       setLoading(true);
-      // Simular datos por ahora
-      const mockCategories = [
-        { id: 1, name: 'Bebidas', description: 'Gaseosas, jugos, agua y bebidas en general', is_active: true, product_count: 25 },
-        { id: 2, name: 'Abarrotes', description: 'Productos de primera necesidad', is_active: true, product_count: 18 },
-        { id: 3, name: 'Lácteos', description: 'Leche, yogurt, queso y derivados lácteos', is_active: true, product_count: 12 },
-        { id: 4, name: 'Snacks', description: 'Papitas, galletas y productos para picar', is_active: true, product_count: 15 },
-        { id: 5, name: 'Limpieza', description: 'Productos de limpieza para el hogar', is_active: true, product_count: 8 },
-        { id: 6, name: 'Panadería', description: 'Pan, pasteles y productos de panadería', is_active: false, product_count: 5 },
-      ];
-      setCategories(mockCategories);
+      const response = await categoriesAPI.getCategories(filters);
+      setCategories(response.data.results || response.data);
     } catch (error) {
-      enqueueSnackbar('Error al cargar categorías', { variant: 'error' });
+      console.error('Error cargando categorías:', error);
+      showAlert('Error cargando categorías', 'danger');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleEdit = (category) => {
-    setSelectedCategory(category);
-    setCategoryFormOpen(true);
+  const resetForm = () => {
+    setCategoryForm({
+      name: '',
+      description: '',
+      is_active: true
+    });
+    setEditingCategory(null);
   };
 
-  const handleDelete = async (category) => {
-    setSelectedCategory(category);
-    setDeleteDialogOpen(true);
+  const openModal = (category = null) => {
+    if (category) {
+      setCategoryForm({
+        name: category.name,
+        description: category.description || '',
+        is_active: category.is_active
+      });
+      setEditingCategory(category);
+    } else {
+      resetForm();
+    }
+    setShowModal(true);
   };
 
-  const confirmDelete = async () => {
+  const closeModal = () => {
+    setShowModal(false);
+    resetForm();
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     try {
-      // await categoryAPI.delete(selectedCategory.id);
-      enqueueSnackbar('Categoría eliminada exitosamente', { variant: 'success' });
-      fetchCategories();
-      setDeleteDialogOpen(false);
+      if (editingCategory) {
+        await categoriesAPI.updateCategory(editingCategory.id, categoryForm);
+        showAlert('Categoría actualizada exitosamente', 'success');
+      } else {
+        await categoriesAPI.createCategory(categoryForm);
+        showAlert('Categoría creada exitosamente', 'success');
+      }
+      closeModal();
+      loadCategories();
     } catch (error) {
-      enqueueSnackbar('Error al eliminar categoría', { variant: 'error' });
+      console.error('Error guardando categoría:', error);
+      showAlert('Error guardando categoría', 'danger');
     }
   };
 
-  const handleViewProducts = (category) => {
-    navigate(`/products?category=${category.id}`);
+  const handleDelete = async (category) => {
+    if (window.confirm(`¿Está seguro de eliminar la categoría "${category.name}"?`)) {
+      try {
+        await categoriesAPI.deleteCategory(category.id);
+        showAlert('Categoría eliminada exitosamente', 'success');
+        loadCategories();
+      } catch (error) {
+        console.error('Error eliminando categoría:', error);
+        showAlert('Error eliminando categoría', 'danger');
+      }
+    }
   };
 
-  const handleCategorySaved = () => {
-    fetchCategories();
-    setCategoryFormOpen(false);
-    setSelectedCategory(null);
+  const viewProducts = async (category) => {
+    try {
+      const response = await categoriesAPI.getCategoryProducts(category.id);
+      const products = response.data.products || [];
+      
+      if (products.length > 0) {
+        window.location.href = `/products?category=${category.id}`;
+      } else {
+        showAlert('Esta categoría no tiene productos', 'info');
+      }
+    } catch (error) {
+      console.error('Error obteniendo productos:', error);
+      showAlert('Error obteniendo productos de la categoría', 'danger');
+    }
   };
 
-  const totalProducts = categories.reduce((sum, cat) => sum + (cat.product_count || 0), 0);
-  const activeCategories = categories.filter(cat => cat.is_active).length;
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Cargando categorías...</p>
+      </div>
+    );
+  }
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-            <Avatar
-              sx={{
-                width: 48,
-                height: 48,
-                bgcolor: 'secondary.main',
-                fontSize: '1.5rem',
-              }}
-            >
-              📁
-            </Avatar>
-            <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary' }}>
-              Categorías
-            </Typography>
-          </Box>
-          <Typography variant="body1" color="text.secondary">
-            Organiza tus productos por categorías para una mejor gestión
-          </Typography>
-        </Box>
-        
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => {
-            setSelectedCategory(null);
-            setCategoryFormOpen(true);
-          }}
-          sx={{
-            borderRadius: 2,
-            px: 3,
-            py: 1.5,
-            background: `linear-gradient(135deg, ${theme.palette.secondary.main} 0%, ${theme.palette.secondary.dark} 100%)`,
-          }}
-        >
+    <div className="categories-page">
+      <div className="page-header">
+        <h1>Gestión de Categorías</h1>
+        <button className="btn btn-primary" onClick={() => openModal()}>
           Nueva Categoría
-        </Button>
-      </Box>
+        </button>
+      </div>
 
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                {categories.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Categorías
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.success.main, 0.1)} 0%, ${alpha(theme.palette.success.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'success.main' }}>
-                {activeCategories}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Categorías Activas
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.1)} 0%, ${alpha(theme.palette.info.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'info.main' }}>
-                {totalProducts}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Productos
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {/* Filtros */}
+      <div className="card">
+        <h3>Filtros</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Buscar</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Buscar por nombre..."
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label>Estado</label>
+            <select
+              className="form-control"
+              value={filters.is_active}
+              onChange={(e) => setFilters(prev => ({ ...prev, is_active: e.target.value }))}
+            >
+              <option value="">Todas</option>
+              <option value="true">Activas</option>
+              <option value="false">Inactivas</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
-      {/* Categories Grid */}
-      {loading ? (
-        <Grid container spacing={3}>
-          {[...Array(6)].map((_, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Skeleton variant="circular" width={56} height={56} />
-                    <Box sx={{ flex: 1 }}>
-                      <Skeleton variant="text" height={32} />
-                      <Skeleton variant="text" width="60%" />
-                    </Box>
-                  </Box>
-                  <Skeleton variant="text" height={60} />
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                    <Skeleton variant="rectangular" width={60} height={24} sx={{ borderRadius: 1 }} />
-                    <Skeleton variant="rectangular" width={100} height={32} sx={{ borderRadius: 1 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      ) : categories.length > 0 ? (
-        <Grid container spacing={3}>
-          {categories.map((category) => (
-            <Grid item xs={12} sm={6} md={4} key={category.id}>
-              <CategoryCard
-                category={category}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onViewProducts={handleViewProducts}
-              />
-            </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Card sx={{ p: 6, textAlign: 'center' }}>
-          <Box sx={{ mb: 3 }}>
-            <CategoryIcon sx={{ fontSize: 80, color: 'text.secondary', opacity: 0.5 }} />
-          </Box>
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            No hay categorías creadas
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            Comienza creando tu primera categoría para organizar tus productos
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => {
-              setSelectedCategory(null);
-              setCategoryFormOpen(true);
-            }}
-          >
-            Crear Primera Categoría
-          </Button>
-        </Card>
+      {/* Tabla de categorías */}
+      <div className="card">
+        <h3>Categorías ({categories.length})</h3>
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Descripción</th>
+                <th>Productos</th>
+                <th>Estado</th>
+                <th>Fecha Creación</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map(category => (
+                <tr key={category.id}>
+                  <td>{category.name}</td>
+                  <td>{category.description || 'Sin descripción'}</td>
+                  <td>{category.product_count || 0}</td>
+                  <td>
+                    <span className={`alert ${category.is_active ? 'alert-success' : 'alert-danger'}`}
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                      {category.is_active ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </td>
+                  <td>{new Date(category.created_at).toLocaleDateString()}</td>
+                  <td>
+                    <button 
+                      className="btn btn-small btn-primary"
+                      onClick={() => openModal(category)}
+                    >
+                      Editar
+                    </button>
+                    <button 
+                      className="btn btn-small btn-info"
+                      onClick={() => viewProducts(category)}
+                      style={{ backgroundColor: '#17a2b8', color: 'white' }}
+                    >
+                      Ver Productos
+                    </button>
+                    <button 
+                      className="btn btn-small btn-danger"
+                      onClick={() => handleDelete(category)}
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de categoría */}
+      {showModal && (
+        <div className="modal show">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h2>{editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}</h2>
+              <span className="close" onClick={closeModal}>&times;</span>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="form-group">
+                <label>Nombre *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={categoryForm.name}
+                  onChange={(e) => setCategoryForm(prev => ({
+                    ...prev,
+                    name: e.target.value
+                  }))}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Descripción</label>
+                <textarea
+                  className="form-control"
+                  value={categoryForm.description}
+                  onChange={(e) => setCategoryForm(prev => ({
+                    ...prev,
+                    description: e.target.value
+                  }))}
+                  rows="3"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={categoryForm.is_active}
+                    onChange={(e) => setCategoryForm(prev => ({
+                      ...prev,
+                      is_active: e.target.checked
+                    }))}
+                  />
+                  {' '}Activa
+                </label>
+              </div>
+
+              <div className="form-group" style={{ textAlign: 'right' }}>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingCategory ? 'Actualizar' : 'Crear'} Categoría
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
-
-      {/* Category Form Dialog */}
-      <CategoryForm
-        open={categoryFormOpen}
-        onClose={() => setCategoryFormOpen(false)}
-        category={selectedCategory}
-        onSaved={handleCategorySaved}
-      />
-      
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <DialogTitle>Confirmar eliminación</DialogTitle>
-        <DialogContent>
-          <Typography>
-            ¿Estás seguro de que deseas eliminar la categoría "{selectedCategory?.name}"?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Esta acción no se puede deshacer y podría afectar los productos asociados.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={confirmDelete}
-            color="error"
-            variant="contained"
-          >
-            Eliminar
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
+    </div>
   );
 };
 

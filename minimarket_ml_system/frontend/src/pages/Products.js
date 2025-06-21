@@ -1,721 +1,584 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  Container,
-  Grid,
-  Card,
-  CardContent,
-  CardMedia,
-  Typography,
-  Box,
-  Button,
-  IconButton,
-  TextField,
-  InputAdornment,
-  Chip,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  Pagination,
-  Skeleton,
-  alpha,
-  useTheme,
-  Fab,
-  Tooltip,
-  Badge,
-  CardActionArea,
-  Zoom,
-} from '@mui/material';
-import {
-  Search,
-  FilterList,
-  Add,
-  Edit,
-  Delete,
-  Visibility,
-  MoreVert,
-  Inventory,
-  TrendingUp,
-  TrendingDown,
-  Warning,
-  CheckCircle,
-  LocalOffer,
-  Category,
-  AttachMoney,
-  BarChart,
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import { productAPI, categoryAPI } from '../services/api';
-import ProductForm from '../components/products/ProductForm';
-import StockAdjustmentDialog from '../components/products/StockAdjustmentDialog';
-import { useSnackbar } from 'notistack';
-
-const ProductCard = ({ product, onEdit, onDelete, onViewDetails, onAdjustStock }) => {
-  const theme = useTheme();
-  const [anchorEl, setAnchorEl] = useState(null);
-  
-  const handleMenuOpen = (event) => {
-    event.stopPropagation();
-    setAnchorEl(event.currentTarget);
-  };
-  
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const getStockStatusColor = (status) => {
-    switch (status) {
-      case 'SIN_STOCK':
-        return { color: 'error', label: 'Sin Stock' };
-      case 'STOCK_BAJO':
-        return { color: 'warning', label: 'Stock Bajo' };
-      case 'SOBRESTOCK':
-        return { color: 'info', label: 'Sobrestock' };
-      default:
-        return { color: 'success', label: 'Normal' };
-    }
-  };
-
-  const stockStatus = getStockStatusColor(product.stock_status);
-  
-  // Generar imagen placeholder basada en la categoría
-  const getProductImage = () => {
-    const categoryImages = {
-      'Bebidas': 'https://images.unsplash.com/photo-1534057308991-b9b3a578f1b1?w=400',
-      'Abarrotes': 'https://images.unsplash.com/photo-1555411569-4f6549690c29?w=400',
-      'Lácteos': 'https://images.unsplash.com/photo-1563636619-e9143da7973b?w=400',
-      'Snacks': 'https://images.unsplash.com/photo-1566478989037-eec170784d0b?w=400',
-      'Limpieza': 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=400',
-    };
-    
-    return categoryImages[product.category_name] || 
-           `https://source.unsplash.com/400x300/?${product.category_name},product`;
-  };
-
-  return (
-    <Zoom in={true} style={{ transitionDelay: '100ms' }}>
-      <Card
-        sx={{
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'relative',
-          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          overflow: 'hidden',
-          '&:hover': {
-            transform: 'translateY(-8px)',
-            boxShadow: theme.shadows[12],
-            '& .product-overlay': {
-              opacity: 1,
-            },
-          },
-        }}
-      >
-        <CardActionArea onClick={() => onViewDetails(product)}>
-          <Box sx={{ position: 'relative', overflow: 'hidden' }}>
-            <CardMedia
-              component="img"
-              height="200"
-              image={getProductImage()}
-              alt={product.name}
-              sx={{
-                transition: 'transform 0.3s ease',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                },
-              }}
-            />
-            
-            {/* Overlay con información rápida */}
-            <Box
-              className="product-overlay"
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                bgcolor: alpha(theme.palette.background.paper, 0.9),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                opacity: 0,
-                transition: 'opacity 0.3s ease',
-              }}
-            >
-              <Button
-                variant="contained"
-                startIcon={<Visibility />}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewDetails(product);
-                }}
-              >
-                Ver Detalles
-              </Button>
-            </Box>
-            
-            {/* Badges */}
-            <Box sx={{ position: 'absolute', top: 8, left: 8, right: 8, display: 'flex', justifyContent: 'space-between' }}>
-              <Chip
-                label={product.category_name}
-                size="small"
-                sx={{
-                  bgcolor: alpha(theme.palette.primary.main, 0.9),
-                  color: 'white',
-                  fontWeight: 600,
-                }}
-                icon={<Category sx={{ color: 'white !important' }} />}
-              />
-              
-              {product.needs_reorder && (
-                <Tooltip title="Necesita reorden">
-                  <Warning sx={{ color: 'warning.main', bgcolor: 'white', borderRadius: '50%', p: 0.5 }} />
-                </Tooltip>
-              )}
-            </Box>
-          </Box>
-        </CardActionArea>
-        
-        <CardContent sx={{ flexGrow: 1, pb: 1 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-            <Box sx={{ flex: 1, pr: 1 }}>
-              <Typography variant="h6" component="div" noWrap sx={{ fontWeight: 600 }}>
-                {product.name}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" noWrap>
-                Código: {product.code}
-              </Typography>
-            </Box>
-            
-            <IconButton size="small" onClick={handleMenuOpen}>
-              <MoreVert />
-            </IconButton>
-          </Box>
-          
-          <Box sx={{ mb: 2 }}>
-            <Typography variant="h5" color="primary" sx={{ fontWeight: 700 }}>
-              S/. {product.sale_price}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Costo: S/. {product.cost_price} • Margen: {product.profit_margin?.toFixed(1)}%
-            </Typography>
-          </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Inventory sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="body2">
-                Stock: <strong>{product.current_stock}</strong>
-              </Typography>
-            </Box>
-            
-            <Chip
-              label={stockStatus.label}
-              color={stockStatus.color}
-              size="small"
-              sx={{ fontWeight: 600 }}
-            />
-          </Box>
-          
-          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Chip
-              label={`Min: ${product.min_stock}`}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: '0.75rem' }}
-            />
-            <Chip
-              label={`Max: ${product.max_stock}`}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: '0.75rem' }}
-            />
-            <Chip
-              label={`Reorden: ${product.reorder_point}`}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: '0.75rem' }}
-            />
-          </Box>
-        </CardContent>
-        
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleMenuClose}
-          PaperProps={{
-            sx: {
-              borderRadius: 2,
-              minWidth: 180,
-            },
-          }}
-        >
-          <MenuItem onClick={() => { handleMenuClose(); onViewDetails(product); }}>
-            <Visibility sx={{ mr: 1, fontSize: 20 }} />
-            Ver detalles
-          </MenuItem>
-          <MenuItem onClick={() => { handleMenuClose(); onEdit(product); }}>
-            <Edit sx={{ mr: 1, fontSize: 20 }} />
-            Editar
-          </MenuItem>
-          <MenuItem onClick={() => { handleMenuClose(); onAdjustStock(product); }}>
-            <TrendingUp sx={{ mr: 1, fontSize: 20 }} />
-            Ajustar stock
-          </MenuItem>
-          <MenuItem onClick={() => { handleMenuClose(); onDelete(product); }} sx={{ color: 'error.main' }}>
-            <Delete sx={{ mr: 1, fontSize: 20 }} />
-            Eliminar
-          </MenuItem>
-        </Menu>
-      </Card>
-    </Zoom>
-  );
-};
+import React, { useState, useEffect } from 'react';
+import { 
+  productsAPI, 
+  categoriesAPI, 
+  suppliersAPI,
+  formatCurrency,
+  showAlert 
+} from '../services/api';
 
 const Products = () => {
-  const theme = useTheme();
-  const navigate = useNavigate();
-  const { enqueueSnackbar } = useSnackbar();
-  
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [stockFilter, setStockFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  
-  const [productFormOpen, setProductFormOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [stockAdjustmentOpen, setStockAdjustmentOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  
-  const itemsPerPage = 12;
+  const [showModal, setShowModal] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [filters, setFilters] = useState({
+    search: '',
+    category: '',
+    stock_status: '',
+    needs_reorder: ''
+  });
+
+  const [productForm, setProductForm] = useState({
+    code: '',
+    barcode: '',
+    name: '',
+    description: '',
+    category: '',
+    supplier: '',
+    cost_price: '',
+    sale_price: '',
+    current_stock: '',
+    min_stock: '',
+    max_stock: '',
+    reorder_point: '',
+    unit: 'UNIDAD',
+    brand: '',
+    is_perishable: false,
+    expiration_days: ''
+  });
 
   useEffect(() => {
-    fetchProducts();
-    fetchCategories();
-  }, [page, selectedCategory, stockFilter, sortBy]);
+    loadData();
+  }, [filters]);
 
-  const fetchProducts = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const params = {
-        page,
-        page_size: itemsPerPage,
-        search: searchTerm,
-        ordering: sortBy,
-      };
+      const [productsRes, categoriesRes, suppliersRes] = await Promise.all([
+        productsAPI.getProducts(filters),
+        categoriesAPI.getCategories(),
+        suppliersAPI.getSuppliers()
+      ]);
       
-      if (selectedCategory !== 'all') {
-        params.category = selectedCategory;
-      }
-      
-      if (stockFilter !== 'all') {
-        params.stock_status = stockFilter;
-      }
-      
-      const response = await productAPI.getAll(params);
-      setProducts(response.data.results || []);
-      setTotalPages(Math.ceil(response.data.count / itemsPerPage));
+      setProducts(productsRes.data.results || productsRes.data);
+      setCategories(categoriesRes.data.results || categoriesRes.data);
+      setSuppliers(suppliersRes.data.results || suppliersRes.data);
     } catch (error) {
-      enqueueSnackbar('Error al cargar productos', { variant: 'error' });
+      console.error('Error cargando datos:', error);
+      showAlert('Error cargando productos', 'danger');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchCategories = async () => {
-    try {
-      const response = await categoryAPI.getAll();
-      setCategories(response.data.results || []);
-    } catch (error) {
-      console.error('Error al cargar categorías:', error);
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const resetForm = () => {
+    setProductForm({
+      code: '',
+      barcode: '',
+      name: '',
+      description: '',
+      category: '',
+      supplier: '',
+      cost_price: '',
+      sale_price: '',
+      current_stock: '',
+      min_stock: '',
+      max_stock: '',
+      reorder_point: '',
+      unit: 'UNIDAD',
+      brand: '',
+      is_perishable: false,
+      expiration_days: ''
+    });
+    setEditingProduct(null);
+  };
+
+  const openModal = (product = null) => {
+    if (product) {
+      setProductForm({
+        code: product.code,
+        barcode: product.barcode || '',
+        name: product.name,
+        description: product.description || '',
+        category: product.category,
+        supplier: product.supplier || '',
+        cost_price: product.cost_price,
+        sale_price: product.sale_price,
+        current_stock: product.current_stock,
+        min_stock: product.min_stock,
+        max_stock: product.max_stock,
+        reorder_point: product.reorder_point,
+        unit: product.unit,
+        brand: product.brand || '',
+        is_perishable: product.is_perishable,
+        expiration_days: product.expiration_days || ''
+      });
+      setEditingProduct(product);
+    } else {
+      resetForm();
     }
+    setShowModal(true);
   };
 
-  const handleSearch = (event) => {
-    setSearchTerm(event.target.value);
-    setPage(1);
+  const closeModal = () => {
+    setShowModal(false);
+    resetForm();
   };
 
-  const handleEdit = (product) => {
-    setSelectedProduct(product);
-    setProductFormOpen(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingProduct) {
+        await productsAPI.updateProduct(editingProduct.id, productForm);
+        showAlert('Producto actualizado exitosamente', 'success');
+      } else {
+        await productsAPI.createProduct(productForm);
+        showAlert('Producto creado exitosamente', 'success');
+      }
+      closeModal();
+      loadData();
+    } catch (error) {
+      console.error('Error guardando producto:', error);
+      showAlert('Error guardando producto', 'danger');
+    }
   };
 
   const handleDelete = async (product) => {
-    setSelectedProduct(product);
-    setDeleteDialogOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    try {
-      await productAPI.delete(selectedProduct.id);
-      enqueueSnackbar('Producto eliminado exitosamente', { variant: 'success' });
-      fetchProducts();
-      setDeleteDialogOpen(false);
-    } catch (error) {
-      enqueueSnackbar('Error al eliminar producto', { variant: 'error' });
+    if (window.confirm(`¿Está seguro de eliminar el producto "${product.name}"?`)) {
+      try {
+        await productsAPI.deleteProduct(product.id);
+        showAlert('Producto eliminado exitosamente', 'success');
+        loadData();
+      } catch (error) {
+        console.error('Error eliminando producto:', error);
+        showAlert('Error eliminando producto', 'danger');
+      }
     }
   };
 
-  const handleViewDetails = (product) => {
-    navigate(`/products/${product.id}`);
+  const handleStockUpdate = async (product, quantity) => {
+    try {
+      const reason = prompt('Razón del ajuste de stock:');
+      if (reason !== null) {
+        await productsAPI.updateStock(product.id, { quantity, reason });
+        showAlert('Stock actualizado exitosamente', 'success');
+        loadData();
+      }
+    } catch (error) {
+      console.error('Error actualizando stock:', error);
+      showAlert('Error actualizando stock', 'danger');
+    }
   };
 
-  const handleAdjustStock = (product) => {
-    setSelectedProduct(product);
-    setStockAdjustmentOpen(true);
-  };
-
-  const handleProductSaved = () => {
-    fetchProducts();
-    setProductFormOpen(false);
-    setSelectedProduct(null);
-  };
-
-  const handleStockAdjusted = () => {
-    fetchProducts();
-    setStockAdjustmentOpen(false);
-    setSelectedProduct(null);
-  };
-
-  // Estadísticas rápidas
-  const stats = useMemo(() => {
-    if (!products.length) return { total: 0, lowStock: 0, outOfStock: 0, needsReorder: 0 };
-    
-    return {
-      total: products.length,
-      lowStock: products.filter(p => p.stock_status === 'STOCK_BAJO').length,
-      outOfStock: products.filter(p => p.stock_status === 'SIN_STOCK').length,
-      needsReorder: products.filter(p => p.needs_reorder).length,
-    };
-  }, [products]);
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Cargando productos...</p>
+      </div>
+    );
+  }
 
   return (
-    <Container maxWidth="xl" sx={{ mt: 2, mb: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
-            Productos
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Gestiona tu catálogo de productos
-          </Typography>
-        </Box>
-        
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => {
-            setSelectedProduct(null);
-            setProductFormOpen(true);
-          }}
-          sx={{
-            borderRadius: 2,
-            px: 3,
-            py: 1.5,
-            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
-          }}
-        >
+    <div className="products-page">
+      <div className="page-header">
+        <h1>Gestión de Productos</h1>
+        <button className="btn btn-primary" onClick={() => openModal()}>
           Nuevo Producto
-        </Button>
-      </Box>
+        </button>
+      </div>
 
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={6} sm={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${alpha(theme.palette.primary.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                {stats.total}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Total Productos
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={6} sm={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.warning.main, 0.1)} 0%, ${alpha(theme.palette.warning.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.warning.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'warning.main' }}>
-                {stats.lowStock}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Stock Bajo
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={6} sm={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.error.main, 0.1)} 0%, ${alpha(theme.palette.error.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.error.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'error.main' }}>
-                {stats.outOfStock}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Sin Stock
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        
-        <Grid item xs={6} sm={3}>
-          <Card
-            sx={{
-              background: `linear-gradient(135deg, ${alpha(theme.palette.info.main, 0.1)} 0%, ${alpha(theme.palette.info.main, 0.05)} 100%)`,
-              border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
-            }}
-          >
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: 'info.main' }}>
-                {stats.needsReorder}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Necesitan Reorden
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      {/* Filters */}
-      <Card sx={{ mb: 3, p: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              placeholder="Buscar productos..."
-              value={searchTerm}
-              onChange={handleSearch}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-              }}
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: 2,
-                },
-              }}
+      {/* Filtros */}
+      <div className="card">
+        <h3>Filtros</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Buscar</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Buscar por nombre, código..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
             />
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
-              <InputLabel>Categoría</InputLabel>
-              <Select
-                value={selectedCategory}
-                onChange={(e) => {
-                  setSelectedCategory(e.target.value);
-                  setPage(1);
-                }}
-                label="Categoría"
-              >
-                <MenuItem value="all">Todas las categorías</MenuItem>
-                {categories.map((category) => (
-                  <MenuItem key={category.id} value={category.id}>
-                    {category.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={2}>
-            <FormControl fullWidth>
-              <InputLabel>Estado Stock</InputLabel>
-              <Select
-                value={stockFilter}
-                onChange={(e) => {
-                  setStockFilter(e.target.value);
-                  setPage(1);
-                }}
-                label="Estado Stock"
-              >
-                <MenuItem value="all">Todos</MenuItem>
-                <MenuItem value="SIN_STOCK">Sin Stock</MenuItem>
-                <MenuItem value="STOCK_BAJO">Stock Bajo</MenuItem>
-                <MenuItem value="NORMAL">Normal</MenuItem>
-                <MenuItem value="SOBRESTOCK">Sobrestock</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <FormControl fullWidth>
-              <InputLabel>Ordenar por</InputLabel>
-              <Select
-                value={sortBy}
-                onChange={(e) => {
-                  setSortBy(e.target.value);
-                  setPage(1);
-                }}
-                label="Ordenar por"
-              >
-                <MenuItem value="name">Nombre</MenuItem>
-                <MenuItem value="-sale_price">Precio (Mayor a menor)</MenuItem>
-                <MenuItem value="sale_price">Precio (Menor a mayor)</MenuItem>
-                <MenuItem value="-current_stock">Stock (Mayor a menor)</MenuItem>
-                <MenuItem value="current_stock">Stock (Menor a mayor)</MenuItem>
-                <MenuItem value="-created_at">Más recientes</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-      </Card>
-
-      {/* Products Grid */}
-      {loading ? (
-        <Grid container spacing={3}>
-          {[...Array(8)].map((_, index) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={index}>
-              <Card>
-                <Skeleton variant="rectangular" height={200} />
-                <CardContent>
-                  <Skeleton variant="text" height={32} />
-                  <Skeleton variant="text" width="60%" />
-                  <Skeleton variant="text" width="40%" />
-                  <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                    <Skeleton variant="rectangular" width={60} height={24} sx={{ borderRadius: 1 }} />
-                    <Skeleton variant="rectangular" width={60} height={24} sx={{ borderRadius: 1 }} />
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      ) : products.length > 0 ? (
-        <>
-          <Grid container spacing={3}>
-            {products.map((product) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
-                <ProductCard
-                  product={product}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onViewDetails={handleViewDetails}
-                  onAdjustStock={handleAdjustStock}
-                />
-              </Grid>
-            ))}
-          </Grid>
-          
-          {/* Pagination */}
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-            <Pagination
-              count={totalPages}
-              page={page}
-              onChange={(e, value) => setPage(value)}
-              color="primary"
-              size="large"
-              showFirstButton
-              showLastButton
-            />
-          </Box>
-        </>
-      ) : (
-        <Card sx={{ p: 6, textAlign: 'center' }}>
-          <Box sx={{ mb: 3 }}>
-            <Inventory sx={{ fontSize: 80, color: 'text.secondary', opacity: 0.5 }} />
-          </Box>
-          <Typography variant="h6" color="text.secondary" gutterBottom>
-            No se encontraron productos
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-            {searchTerm || selectedCategory !== 'all' || stockFilter !== 'all'
-              ? 'Intenta cambiar los filtros de búsqueda'
-              : 'Comienza agregando tu primer producto'}
-          </Typography>
-          {!searchTerm && selectedCategory === 'all' && stockFilter === 'all' && (
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => {
-                setSelectedProduct(null);
-                setProductFormOpen(true);
-              }}
+          </div>
+          <div className="form-group">
+            <label>Categoría</label>
+            <select
+              className="form-control"
+              value={filters.category}
+              onChange={(e) => handleFilterChange('category', e.target.value)}
             >
-              Agregar Primer Producto
-            </Button>
-          )}
-        </Card>
-      )}
+              <option value="">Todas las categorías</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Estado de Stock</label>
+            <select
+              className="form-control"
+              value={filters.stock_status}
+              onChange={(e) => handleFilterChange('stock_status', e.target.value)}
+            >
+              <option value="">Todos</option>
+              <option value="SIN_STOCK">Sin Stock</option>
+              <option value="STOCK_BAJO">Stock Bajo</option>
+              <option value="NORMAL">Normal</option>
+              <option value="SOBRESTOCK">Sobrestock</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Necesita Reorden</label>
+            <select
+              className="form-control"
+              value={filters.needs_reorder}
+              onChange={(e) => handleFilterChange('needs_reorder', e.target.value)}
+            >
+              <option value="">Todos</option>
+              <option value="true">Sí</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
-      {/* Dialogs */}
-      <ProductForm
-        open={productFormOpen}
-        onClose={() => setProductFormOpen(false)}
-        product={selectedProduct}
-        onSaved={handleProductSaved}
-        categories={categories}
-      />
-      
-      <StockAdjustmentDialog
-        open={stockAdjustmentOpen}
-        onClose={() => setStockAdjustmentOpen(false)}
-        product={selectedProduct}
-        onAdjusted={handleStockAdjusted}
-      />
-      
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <DialogTitle>Confirmar eliminación</DialogTitle>
-        <DialogContent>
-          <Typography>
-            ¿Estás seguro de que deseas eliminar el producto "{selectedProduct?.name}"?
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            Esta acción no se puede deshacer.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDeleteDialogOpen(false)}>
-            Cancelar
-          </Button>
-          <Button
-            onClick={confirmDelete}
-            color="error"
-            variant="contained"
-          >
-            Eliminar
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
+      {/* Tabla de productos */}
+      <div className="card">
+        <h3>Productos ({products.length})</h3>
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Precio Venta</th>
+                <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(product => (
+                <tr key={product.id}>
+                  <td>{product.code}</td>
+                  <td>{product.name}</td>
+                  <td>{product.category_name}</td>
+                  <td>{formatCurrency(product.sale_price)}</td>
+                  <td>
+                    {product.current_stock}
+                    {product.needs_reorder && (
+                      <span className="alert alert-warning" style={{ 
+                        marginLeft: '0.5rem', 
+                        padding: '0.25rem', 
+                        fontSize: '0.8rem' 
+                      }}>
+                        ¡Reorden!
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`alert ${
+                      product.stock_status === 'SIN_STOCK' ? 'alert-danger' :
+                      product.stock_status === 'STOCK_BAJO' ? 'alert-warning' :
+                      product.stock_status === 'SOBRESTOCK' ? 'alert-info' :
+                      'alert-success'
+                    }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                      {product.stock_status}
+                    </span>
+                  </td>
+                  <td>
+                    <button 
+                      className="btn btn-small btn-primary"
+                      onClick={() => openModal(product)}
+                    >
+                      Editar
+                    </button>
+                    <button 
+                      className="btn btn-small btn-warning"
+                      onClick={() => {
+                        const quantity = prompt('Cantidad a agregar (negativo para quitar):');
+                        if (quantity !== null) {
+                          handleStockUpdate(product, parseInt(quantity));
+                        }
+                      }}
+                    >
+                      Stock
+                    </button>
+                    <button 
+                      className="btn btn-small btn-danger"
+                      onClick={() => handleDelete(product)}
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de producto */}
+      {showModal && (
+        <div className="modal show">
+          <div className="modal-content" style={{ maxWidth: '800px' }}>
+            <div className="modal-header">
+              <h2>{editingProduct ? 'Editar Producto' : 'Nuevo Producto'}</h2>
+              <span className="close" onClick={closeModal}>&times;</span>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Código *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={productForm.code}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      code: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Código de Barras</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={productForm.barcode}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      barcode: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Nombre *</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={productForm.name}
+                  onChange={(e) => setProductForm(prev => ({
+                    ...prev,
+                    name: e.target.value
+                  }))}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Descripción</label>
+                <textarea
+                  className="form-control"
+                  value={productForm.description}
+                  onChange={(e) => setProductForm(prev => ({
+                    ...prev,
+                    description: e.target.value
+                  }))}
+                  rows="3"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Categoría *</label>
+                  <select
+                    className="form-control"
+                    value={productForm.category}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      category: e.target.value
+                    }))}
+                    required
+                  >
+                    <option value="">Seleccionar categoría</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Proveedor</label>
+                  <select
+                    className="form-control"
+                    value={productForm.supplier}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      supplier: e.target.value
+                    }))}
+                  >
+                    <option value="">Seleccionar proveedor</option>
+                    {suppliers.map(sup => (
+                      <option key={sup.id} value={sup.id}>{sup.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Precio Costo *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="form-control"
+                    value={productForm.cost_price}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      cost_price: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Precio Venta *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="form-control"
+                    value={productForm.sale_price}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      sale_price: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Stock Actual</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={productForm.current_stock}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      current_stock: e.target.value
+                    }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Stock Mínimo</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={productForm.min_stock}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      min_stock: e.target.value
+                    }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Stock Máximo</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={productForm.max_stock}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      max_stock: e.target.value
+                    }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Punto Reorden</label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    value={productForm.reorder_point}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      reorder_point: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Unidad</label>
+                  <select
+                    className="form-control"
+                    value={productForm.unit}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      unit: e.target.value
+                    }))}
+                  >
+                    <option value="UNIDAD">Unidad</option>
+                    <option value="KG">Kilogramo</option>
+                    <option value="LITRO">Litro</option>
+                    <option value="PAQUETE">Paquete</option>
+                    <option value="CAJA">Caja</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Marca</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={productForm.brand}
+                    onChange={(e) => setProductForm(prev => ({
+                      ...prev,
+                      brand: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={productForm.is_perishable}
+                      onChange={(e) => setProductForm(prev => ({
+                        ...prev,
+                        is_perishable: e.target.checked
+                      }))}
+                    />
+                    {' '}Es Perecedero
+                  </label>
+                </div>
+                {productForm.is_perishable && (
+                  <div className="form-group">
+                    <label>Días hasta Vencimiento</label>
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={productForm.expiration_days}
+                      onChange={(e) => setProductForm(prev => ({
+                        ...prev,
+                        expiration_days: e.target.value
+                      }))}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="form-group" style={{ textAlign: 'right' }}>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingProduct ? 'Actualizar' : 'Crear'} Producto
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

@@ -1,92 +1,528 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Container,
-  Grid,
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Button,
-  IconButton,
-  TextField,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
-  Avatar,
-  useTheme,
-  alpha,
-  Skeleton,
-  InputAdornment,
-  Menu,
-  MenuItem,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  Pagination,
-  Tooltip,
-} from '@mui/material';
-import {
-  Add,
-  Search,
-  Person,
-  Phone,
-  Email,
-  ShoppingBag,
-  AttachMoney,
-  MoreVert,
-  Edit,
-  Delete,
-  Visibility,
-  TrendingUp,
-  Star,
-  LocationOn,
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { customerAPI } from '../services/api';
-import { useSnackbar } from 'notistack';
+import { customersAPI, formatCurrency, showAlert } from '../services/api';
 
-const CustomerCard = ({ customer, onEdit, onDelete, onViewHistory }) => {
-  const theme = useTheme();
-  const [anchorEl, setAnchorEl] = useState(null);
-  
-  const handleMenuOpen = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-  
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
+const Customers = () => {
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [salesHistory, setSalesHistory] = useState([]);
 
-  const getCustomerTypeInfo = (type) => {
-    switch (type) {
-      case 'VIP':
-        return { color: 'primary', icon: <Star />, label: 'VIP' };
-      case 'FREQUENT':
-        return { color: 'success', icon: <TrendingUp />, label: 'Frecuente' };
-      case 'WHOLESALE':
-        return { color: 'info', icon: <ShoppingBag />, label: 'Mayorista' };
-      default:
-        return { color: 'default', icon: <Person />, label: 'Regular' };
+  const [filters, setFilters] = useState({
+    search: '',
+    customer_type: '',
+    is_active: '',
+    has_credit: ''
+  });
+
+  const [customerForm, setCustomerForm] = useState({
+    first_name: '',
+    last_name: '',
+    document_type: 'DNI',
+    document_number: '',
+    phone: '',
+    email: '',
+    address: '',
+    customer_type: 'REGULAR',
+    credit_limit: '',
+    birth_date: '',
+    is_active: true
+  });
+
+  useEffect(() => {
+    loadCustomers();
+  }, [filters]);
+
+  const loadCustomers = async () => {
+    try {
+      setLoading(true);
+      const response = await customersAPI.getCustomers(filters);
+      setCustomers(response.data.results || response.data);
+    } catch (error) {
+      console.error('Error cargando clientes:', error);
+      showAlert('Error cargando clientes', 'danger');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const customerTypeInfo = getCustomerTypeInfo(customer.customer_type);
+  const resetForm = () => {
+    setCustomerForm({
+      first_name: '',
+      last_name: '',
+      document_type: 'DNI',
+      document_number: '',
+      phone: '',
+      email: '',
+      address: '',
+      customer_type: 'REGULAR',
+      credit_limit: '',
+      birth_date: '',
+      is_active: true
+    });
+    setEditingCustomer(null);
+  };
+
+  const openModal = (customer = null) => {
+    if (customer) {
+      setCustomerForm({
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+        document_type: customer.document_type,
+        document_number: customer.document_number,
+        phone: customer.phone || '',
+        email: customer.email || '',
+        address: customer.address || '',
+        customer_type: customer.customer_type,
+        credit_limit: customer.credit_limit,
+        birth_date: customer.birth_date || '',
+        is_active: customer.is_active
+      });
+      setEditingCustomer(customer);
+    } else {
+      resetForm();
+    }
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    resetForm();
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      if (editingCustomer) {
+        await customersAPI.updateCustomer(editingCustomer.id, customerForm);
+        showAlert('Cliente actualizado exitosamente', 'success');
+      } else {
+        await customersAPI.createCustomer(customerForm);
+        showAlert('Cliente creado exitosamente', 'success');
+      }
+      closeModal();
+      loadCustomers();
+    } catch (error) {
+      console.error('Error guardando cliente:', error);
+      showAlert('Error guardando cliente', 'danger');
+    }
+  };
+
+  const handleDelete = async (customer) => {
+    if (window.confirm(`¿Está seguro de eliminar el cliente "${customer.full_name}"?`)) {
+      try {
+        await customersAPI.deleteCustomer(customer.id);
+        showAlert('Cliente eliminado exitosamente', 'success');
+        loadCustomers();
+      } catch (error) {
+        console.error('Error eliminando cliente:', error);
+        showAlert('Error eliminando cliente', 'danger');
+      }
+    }
+  };
+
+  const viewSalesHistory = async (customer) => {
+    try {
+      setSelectedCustomer(customer);
+      const response = await customersAPI.getCustomerSalesHistory(customer.id, { days: 90 });
+      setSalesHistory(response.data.sales || []);
+      setShowHistoryModal(true);
+    } catch (error) {
+      console.error('Error cargando historial:', error);
+      showAlert('Error cargando historial de ventas', 'danger');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading">
+        <div className="spinner"></div>
+        <p>Cargando clientes...</p>
+      </div>
+    );
+  }
 
   return (
-    <Card
-      sx={{
-        height: '100%',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        '&:hover': {
-          transform: 'translateY(-4px)',
+    <div className="customers-page">
+      <div className="page-header">
+        <h1>Gestión de Clientes</h1>
+        <button className="btn btn-primary" onClick={() => openModal()}>
+          Nuevo Cliente
+        </button>
+      </div>
+
+      {/* Filtros */}
+      <div className="card">
+        <h3>Filtros</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Buscar</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Buscar por nombre, documento..."
+              value={filters.search}
+              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            />
+          </div>
+          <div className="form-group">
+            <label>Tipo de Cliente</label>
+            <select
+              className="form-control"
+              value={filters.customer_type}
+              onChange={(e) => setFilters(prev => ({ ...prev, customer_type: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              <option value="REGULAR">Regular</option>
+              <option value="FREQUENT">Frecuente</option>
+              <option value="VIP">VIP</option>
+              <option value="WHOLESALE">Mayorista</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Estado</label>
+            <select
+              className="form-control"
+              value={filters.is_active}
+              onChange={(e) => setFilters(prev => ({ ...prev, is_active: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              <option value="true">Activos</option>
+              <option value="false">Inactivos</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Con Crédito</label>
+            <select
+              className="form-control"
+              value={filters.has_credit}
+              onChange={(e) => setFilters(prev => ({ ...prev, has_credit: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              <option value="true">Con Crédito</option>
+              <option value="false">Sin Crédito</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de clientes */}
+      <div className="card">
+        <h3>Clientes ({customers.length})</h3>
+        <div className="table-container">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Documento</th>
+                <th>Teléfono</th>
+                <th>Tipo</th>
+                <th>Total Compras</th>
+                <th>Crédito Disponible</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map(customer => (
+                <tr key={customer.id}>
+                  <td>{customer.full_name}</td>
+                  <td>{customer.document_type}: {customer.document_number}</td>
+                  <td>{customer.phone || 'N/A'}</td>
+                  <td>
+                    <span className={`alert ${
+                      customer.customer_type === 'VIP' ? 'alert-warning' :
+                      customer.customer_type === 'FREQUENT' ? 'alert-info' :
+                      'alert-secondary'
+                    }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                      {customer.customer_type}
+                    </span>
+                  </td>
+                  <td>{formatCurrency(customer.total_purchases)}</td>
+                  <td>{formatCurrency(customer.available_credit)}</td>
+                  <td>
+                    <span className={`alert ${customer.is_active ? 'alert-success' : 'alert-danger'}`}
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                      {customer.is_active ? 'Activo' : 'Inactivo'}
+                    </span>
+                  </td>
+                  <td>
+                    <button 
+                      className="btn btn-small btn-primary"
+                      onClick={() => openModal(customer)}
+                    >
+                      Editar
+                    </button>
+                    <button 
+                      className="btn btn-small btn-info"
+                      onClick={() => viewSalesHistory(customer)}
+                      style={{ backgroundColor: '#17a2b8', color: 'white' }}
+                    >
+                      Historial
+                    </button>
+                    <button 
+                      className="btn btn-small btn-danger"
+                      onClick={() => handleDelete(customer)}
+                    >
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de cliente */}
+      {showModal && (
+        <div className="modal show">
+          <div className="modal-content" style={{ maxWidth: '700px' }}>
+            <div className="modal-header">
+              <h2>{editingCustomer ? 'Editar Cliente' : 'Nuevo Cliente'}</h2>
+              <span className="close" onClick={closeModal}>&times;</span>
+            </div>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Nombres *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={customerForm.first_name}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      first_name: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Apellidos *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={customerForm.last_name}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      last_name: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Tipo Documento *</label>
+                  <select
+                    className="form-control"
+                    value={customerForm.document_type}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      document_type: e.target.value
+                    }))}
+                  >
+                    <option value="DNI">DNI</option>
+                    <option value="RUC">RUC</option>
+                    <option value="CE">CE</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Número Documento *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={customerForm.document_number}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      document_number: e.target.value
+                    }))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Teléfono</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={customerForm.phone}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      phone: e.target.value
+                    }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input
+                    type="email"
+                    className="form-control"
+                    value={customerForm.email}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      email: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Dirección</label>
+                <textarea
+                  className="form-control"
+                  value={customerForm.address}
+                  onChange={(e) => setCustomerForm(prev => ({
+                    ...prev,
+                    address: e.target.value
+                  }))}
+                  rows="2"
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Tipo de Cliente</label>
+                  <select
+                    className="form-control"
+                    value={customerForm.customer_type}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      customer_type: e.target.value
+                    }))}
+                  >
+                    <option value="REGULAR">Regular</option>
+                    <option value="FREQUENT">Frecuente</option>
+                    <option value="VIP">VIP</option>
+                    <option value="WHOLESALE">Mayorista</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Límite de Crédito</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="form-control"
+                    value={customerForm.credit_limit}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      credit_limit: e.target.value
+                    }))}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Fecha Nacimiento</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={customerForm.birth_date}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      birth_date: e.target.value
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={customerForm.is_active}
+                    onChange={(e) => setCustomerForm(prev => ({
+                      ...prev,
+                      is_active: e.target.checked
+                    }))}
+                  />
+                  {' '}Activo
+                </label>
+              </div>
+
+              <div className="form-group" style={{ textAlign: 'right' }}>
+                <button type="button" className="btn btn-secondary" onClick={closeModal}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  {editingCustomer ? 'Actualizar' : 'Crear'} Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Historial de Ventas */}
+      {showHistoryModal && selectedCustomer && (
+        <div className="modal show">
+          <div className="modal-content" style={{ maxWidth: '800px' }}>
+            <div className="modal-header">
+              <h2>Historial de Ventas - {selectedCustomer.full_name}</h2>
+              <span className="close" onClick={() => setShowHistoryModal(false)}>&times;</span>
+            </div>
+            
+            <div className="grid grid-3">
+              <div>
+                <h4>Total Compras</h4>
+                <p><strong>{formatCurrency(selectedCustomer.total_purchases)}</strong></p>
+              </div>
+              <div>
+                <h4>Cantidad Compras</h4>
+                <p><strong>{selectedCustomer.purchase_count}</strong></p>
+              </div>
+              <div>
+                <h4>Promedio por Compra</h4>
+                <p><strong>{formatCurrency(selectedCustomer.average_purchase)}</strong></p>
+              </div>
+            </div>
+
+            {salesHistory.length > 0 ? (
+              <div>
+                <h4>Últimas Ventas (90 días)</h4>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Número</th>
+                      <th>Fecha</th>
+                      <th>Total</th>
+                      <th>Método Pago</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {salesHistory.map(sale => (
+                      <tr key={sale.id}>
+                        <td>{sale.sale_number}</td>
+                        <td>{new Date(sale.sale_date).toLocaleDateString()}</td>
+                        <td>{formatCurrency(sale.total)}</td>
+                        <td>{sale.payment_method}</td>
+                        <td>
+                          <span className={`alert ${
+                            sale.status === 'COMPLETED' ? 'alert-success' :
+                            sale.status === 'PENDING' ? 'alert-warning' :
+                            'alert-danger'
+                          }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                            {sale.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>No hay ventas registradas en los últimos 90 días</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Customers;
