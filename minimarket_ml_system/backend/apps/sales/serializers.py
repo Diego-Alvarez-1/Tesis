@@ -82,15 +82,39 @@ class SaleCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         items_data = validated_data.pop('items')
         
-        # Generar número de venta
-        last_sale = Sale.objects.order_by('-id').first()
-        if last_sale:
-            sale_number = f"V{str(int(last_sale.sale_number[1:]) + 1).zfill(6)}"
-        else:
-            sale_number = "V000001"
+        # CORRECCIÓN: Manejar usuario no autenticado
+        request = self.context.get('request')
+        seller = None
         
-        validated_data['sale_number'] = sale_number
-        validated_data['seller'] = self.context['request'].user
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            seller = request.user
+        else:
+            # Usar admin por defecto
+            from django.contrib.auth.models import User
+            seller = User.objects.filter(is_superuser=True).first()
+            
+            if not seller:
+                # Crear usuario admin si no existe
+                seller, created = User.objects.get_or_create(
+                    username='admin',
+                    defaults={
+                        'email': 'admin@minimarket.com',
+                        'first_name': 'Admin',
+                        'last_name': 'Sistema',
+                        'is_superuser': True,
+                        'is_staff': True
+                    }
+                )
+                if created:
+                    seller.set_password('admin123')
+                    seller.save()
+                    print(f"✅ Usuario admin creado en serializer: {seller.username}")
+        
+        print(f"🔍 Serializer usando seller: {seller}")
+        
+        # NO generar número aquí, se hace en perform_create del ViewSet
+        # validated_data['sale_number'] = sale_number  ← COMENTAR ESTA LÍNEA
+        validated_data['seller'] = seller
         
         sale = Sale.objects.create(**validated_data)
         

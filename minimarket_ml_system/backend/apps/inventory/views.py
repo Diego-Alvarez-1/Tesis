@@ -112,9 +112,34 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
         else:
             order_number = "PO000001"
         
+        # CORRECCIÓN: Verificar si hay usuario autenticado
+        created_by = None
+        if hasattr(self.request, 'user') and self.request.user.is_authenticated:
+            created_by = self.request.user
+        else:
+            # Si no hay usuario autenticado, usar el primer superusuario disponible
+            from django.contrib.auth.models import User
+            created_by = User.objects.filter(is_superuser=True).first()
+            
+            # Si no hay superusuarios, crear un usuario por defecto
+            if not created_by:
+                created_by, created = User.objects.get_or_create(
+                    username='admin',
+                    defaults={
+                        'email': 'admin@minimarket.com',
+                        'first_name': 'Admin',
+                        'last_name': 'Sistema',
+                        'is_superuser': True,
+                        'is_staff': True
+                    }
+                )
+                if created:
+                    created_by.set_password('admin123')
+                    created_by.save()
+        
         serializer.save(
             order_number=order_number,
-            created_by=self.request.user
+            created_by=created_by
         )
     
     @action(detail=True, methods=['post'])
@@ -228,14 +253,42 @@ class InventoryCountViewSet(viewsets.ModelViewSet):
         return queryset.order_by('-scheduled_date')
     
     def perform_create(self, serializer):
-        # Generar número de conteo
-        last_count = InventoryCount.objects.order_by('-id').first()
-        if last_count:
-            count_number = f"IC{str(int(last_count.count_number[2:]) + 1).zfill(6)}"
+        # Generar número de orden
+        last_order = PurchaseOrder.objects.order_by('-id').first()
+        if last_order:
+            order_number = f"PO{str(int(last_order.order_number[2:]) + 1).zfill(6)}"
         else:
-            count_number = "IC000001"
+            order_number = "PO000001"
         
-        serializer.save(count_number=count_number)
+        # CORRECCIÓN: Verificar si hay usuario autenticado
+        created_by = None
+        if hasattr(self.request, 'user') and self.request.user.is_authenticated:
+            created_by = self.request.user
+        else:
+            # Si no hay usuario autenticado, usar el primer superusuario disponible
+            from django.contrib.auth.models import User
+            created_by = User.objects.filter(is_superuser=True).first()
+            
+            # Si no hay superusuarios, crear un usuario por defecto
+            if not created_by:
+                created_by, created = User.objects.get_or_create(
+                    username='admin',
+                    defaults={
+                        'email': 'admin@minimarket.com',
+                        'first_name': 'Admin',
+                        'last_name': 'Sistema',
+                        'is_superuser': True,
+                        'is_staff': True
+                    }
+                )
+                if created:
+                    created_by.set_password('admin123')
+                    created_by.save()
+        
+        serializer.save(
+            order_number=order_number,
+            created_by=created_by
+        )
     
     @action(detail=True, methods=['post'])
     def start_count(self, request, pk=None):

@@ -22,7 +22,7 @@ const Products = () => {
     category: '',
     stock_status: '',
     needs_reorder: '',
-    is_active: 'true'
+    is_active: ''
   });
 
   const [productForm, setProductForm] = useState({
@@ -45,64 +45,90 @@ const Products = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadData();
-  }, [filters]);
+useEffect(() => {
+  console.log('Componente montado, cargando datos iniciales');
+  loadData();
+}, []); // Carga inicial
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      // Cargar datos en paralelo con manejo de errores
-      const results = await Promise.allSettled([
-        productsAPI.getProducts(filters),
-        categoriesAPI.getCategories({ is_active: true }),
-        suppliersAPI.getSuppliers({ is_active: true })
-      ]);
-      
-      // Procesar productos
-      if (results[0].status === 'fulfilled') {
-        const productsData = results[0].value.data;
-        setProducts(productsData.results || productsData || []);
-      } else {
-        console.error('Error cargando productos:', results[0].reason);
-        handleApiError(results[0].reason, 'Error cargando productos');
-        setProducts([]);
-      }
+useEffect(() => {
+  console.log('Filtros cambiaron:', filters);
+  loadData();
+}, [filters]); 
 
-      // Procesar categorías
-      if (results[1].status === 'fulfilled') {
-        const categoriesData = results[1].value.data;
-        setCategories(categoriesData.results || categoriesData || []);
-      } else {
-        console.error('Error cargando categorías:', results[1].reason);
-        setCategories([]);
+const loadData = async () => {
+  try {
+    setLoading(true);
+    
+    // CORRECCIÓN: Limpiar filtros vacíos antes de enviar
+    const cleanFilters = {};
+    Object.keys(filters).forEach(key => {
+      if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
+        cleanFilters[key] = filters[key];
       }
-
-      // Procesar proveedores
-      if (results[2].status === 'fulfilled') {
-        const suppliersData = results[2].value.data;
-        setSuppliers(suppliersData.results || suppliersData || []);
-      } else {
-        console.error('Error cargando proveedores:', results[2].reason);
-        setSuppliers([]);
-      }
-      
-    } catch (error) {
-      console.error('Error general cargando datos:', error);
-      handleApiError(error, 'Error cargando datos');
-    } finally {
-      setLoading(false);
+    });
+    
+    console.log('Filtros aplicados:', cleanFilters); // Debug
+    
+    // Cargar datos en paralelo con manejo de errores
+    const results = await Promise.allSettled([
+      productsAPI.getProducts(cleanFilters), // ← Usar filtros limpios
+      categoriesAPI.getCategories({ is_active: true }),
+      suppliersAPI.getSuppliers({ is_active: true })
+    ]);
+    
+    // Procesar productos
+    if (results[0].status === 'fulfilled') {
+      const productsData = results[0].value.data;
+      console.log('Productos recibidos:', productsData); // Debug
+      setProducts(productsData.results || productsData || []);
+    } else {
+      console.error('Error cargando productos:', results[0].reason);
+      handleApiError(results[0].reason, 'Error cargando productos');
+      setProducts([]);
     }
-  };
+
+    // Procesar categorías
+    if (results[1].status === 'fulfilled') {
+      const categoriesData = results[1].value.data;
+      setCategories(categoriesData.results || categoriesData || []);
+    } else {
+      console.error('Error cargando categorías:', results[1].reason);
+      setCategories([]);
+    }
+
+    // Procesar proveedores
+    if (results[2].status === 'fulfilled') {
+      const suppliersData = results[2].value.data;
+      setSuppliers(suppliersData.results || suppliersData || []);
+    } else {
+      console.error('Error cargando proveedores:', results[2].reason);
+      setSuppliers([]);
+    }
+    
+  } catch (error) {
+    console.error('Error general cargando datos:', error);
+    handleApiError(error, 'Error cargando datos');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleFilterChange = (field, value) => {
-    setFilters(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
+  console.log(`Cambiando filtro ${field} a:`, value); // Debug
+  setFilters(prev => ({
+    ...prev,
+    [field]: value
+  }));
+};
+  const clearFilters = () => {
+    setFilters({
+      search: '',
+      category: '',
+      stock_status: '',
+      needs_reorder: '',
+      is_active: ''
+    });
+  }; 
   const resetForm = () => {
     setProductForm({
       code: '',
@@ -159,56 +185,70 @@ const Products = () => {
     resetForm();
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      // Validaciones básicas
-      if (!productForm.name.trim()) {
-        showAlert('El nombre del producto es obligatorio', 'warning');
-        return;
-      }
-      if (!productForm.category) {
-        showAlert('Seleccione una categoría', 'warning');
-        return;
-      }
-      if (parseFloat(productForm.cost_price) <= 0) {
-        showAlert('El precio de costo debe ser mayor a 0', 'warning');
-        return;
-      }
-      if (parseFloat(productForm.sale_price) <= parseFloat(productForm.cost_price)) {
-        showAlert('El precio de venta debe ser mayor al precio de costo', 'warning');
-        return;
-      }
-
-      // Preparar datos para envío
-      const formData = {
-        ...productForm,
-        cost_price: parseFloat(productForm.cost_price) || 0,
-        sale_price: parseFloat(productForm.sale_price) || 0,
-        current_stock: parseInt(productForm.current_stock) || 0,
-        min_stock: parseInt(productForm.min_stock) || 0,
-        max_stock: parseInt(productForm.max_stock) || 100,
-        reorder_point: parseInt(productForm.reorder_point) || 0,
-        expiration_days: productForm.expiration_days ? parseInt(productForm.expiration_days) : null,
-        supplier: productForm.supplier || null
-      };
-
-      if (editingProduct) {
-        await productsAPI.updateProduct(editingProduct.id, formData);
-        showAlert('Producto actualizado exitosamente', 'success');
-      } else {
-        await productsAPI.createProduct(formData);
-        showAlert('Producto creado exitosamente', 'success');
-      }
-      
-      closeModal();
-      loadData();
-    } catch (error) {
-      console.error('Error guardando producto:', error);
-      handleApiError(error, 'Error guardando producto');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  try {
+    // Validaciones básicas
+    if (!productForm.name.trim()) {
+      showAlert('El nombre del producto es obligatorio', 'warning');
+      return;
     }
-  };
+    if (!productForm.category) {
+      showAlert('Seleccione una categoría', 'warning');
+      return;
+    }
+    if (parseFloat(productForm.cost_price) <= 0) {
+      showAlert('El precio de costo debe ser mayor a 0', 'warning');
+      return;
+    }
+    if (parseFloat(productForm.sale_price) <= parseFloat(productForm.cost_price)) {
+      showAlert('El precio de venta debe ser mayor al precio de costo', 'warning');
+      return;
+    }
 
+    // Preparar datos para envío
+    const formData = {
+      ...productForm,
+      cost_price: parseFloat(productForm.cost_price) || 0,
+      sale_price: parseFloat(productForm.sale_price) || 0,
+      current_stock: parseInt(productForm.current_stock) || 0,
+      min_stock: parseInt(productForm.min_stock) || 0,
+      max_stock: parseInt(productForm.max_stock) || 100,
+      reorder_point: parseInt(productForm.reorder_point) || 0,
+      expiration_days: productForm.expiration_days ? parseInt(productForm.expiration_days) : null,
+      supplier: productForm.supplier || null
+    };
+
+    let response;
+    if (editingProduct) {
+      response = await productsAPI.updateProduct(editingProduct.id, formData);
+      showAlert('Producto actualizado exitosamente', 'success');
+    } else {
+      response = await productsAPI.createProduct(formData);
+      showAlert('Producto creado exitosamente', 'success');
+      
+      // CORRECCIÓN: Crear movimiento de stock inicial si hay stock inicial
+      if (formData.current_stock > 0) {
+        try {
+          await productsAPI.updateStock(response.data.id, {
+            quantity: formData.current_stock,
+            reason: 'Stock inicial del producto'
+          });
+          console.log('Movimiento de stock inicial creado');
+        } catch (stockError) {
+          console.error('Error creando movimiento de stock inicial:', stockError);
+          // No mostrar error al usuario, el producto se creó correctamente
+        }
+      }
+    }
+    
+    closeModal();
+    loadData();
+  } catch (error) {
+    console.error('Error guardando producto:', error);
+    handleApiError(error, 'Error guardando producto');
+  }
+};
   const handleDelete = async (product) => {
     if (window.confirm(`¿Está seguro de eliminar el producto "${product.name}"?`)) {
       try {
@@ -255,60 +295,81 @@ const Products = () => {
       </div>
 
       {/* Filtros */}
-      <div className="card">
-        <h3>Filtros</h3>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Buscar</label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Buscar por nombre, código..."
-              value={filters.search}
-              onChange={(e) => handleFilterChange('search', e.target.value)}
-            />
-          </div>
-          <div className="form-group">
-            <label>Categoría</label>
-            <select
-              className="form-control"
-              value={filters.category}
-              onChange={(e) => handleFilterChange('category', e.target.value)}
-            >
-              <option value="">Todas las categorías</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Estado de Stock</label>
-            <select
-              className="form-control"
-              value={filters.stock_status}
-              onChange={(e) => handleFilterChange('stock_status', e.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="SIN_STOCK">Sin Stock</option>
-              <option value="STOCK_BAJO">Stock Bajo</option>
-              <option value="NORMAL">Normal</option>
-              <option value="SOBRESTOCK">Sobrestock</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Necesita Reorden</label>
-            <select
-              className="form-control"
-              value={filters.needs_reorder}
-              onChange={(e) => handleFilterChange('needs_reorder', e.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="true">Sí</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-        </div>
-      </div>
+<div className="card">
+  <h3>Filtros</h3>
+  <div className="form-row">
+    <div className="form-group">
+      <label>Buscar</label>
+      <input
+        type="text"
+        className="form-control"
+        placeholder="Buscar por nombre, código..."
+        value={filters.search}
+        onChange={(e) => handleFilterChange('search', e.target.value)}
+      />
+    </div>
+    <div className="form-group">
+      <label>Categoría</label>
+      <select
+        className="form-control"
+        value={filters.category}
+        onChange={(e) => handleFilterChange('category', e.target.value)}
+      >
+        <option value="">Todas las categorías</option>
+        {categories.map(cat => (
+          <option key={cat.id} value={cat.id}>{cat.name}</option>
+        ))}
+      </select>
+    </div>
+    <div className="form-group">
+      <label>Estado de Stock</label>
+      <select
+        className="form-control"
+        value={filters.stock_status}
+        onChange={(e) => handleFilterChange('stock_status', e.target.value)}
+      >
+        <option value="">Todos</option>
+        <option value="SIN_STOCK">Sin Stock</option>
+        <option value="STOCK_BAJO">Stock Bajo</option>
+        <option value="NORMAL">Normal</option>
+        <option value="SOBRESTOCK">Sobrestock</option>
+      </select>
+    </div>
+    <div className="form-group">
+      <label>Necesita Reorden</label>
+      <select
+        className="form-control"
+        value={filters.needs_reorder}
+        onChange={(e) => handleFilterChange('needs_reorder', e.target.value)}
+      >
+        <option value="">Todos</option>
+        <option value="true">Sí</option>
+        <option value="false">No</option>
+      </select>
+    </div>
+    <div className="form-group">
+      <label>Estado</label>
+      <select
+        className="form-control"
+        value={filters.is_active}
+        onChange={(e) => handleFilterChange('is_active', e.target.value)}
+      >
+        <option value="">Todos</option>
+        <option value="true">Activos</option>
+        <option value="false">Inactivos</option>
+      </select>
+    </div>
+    <div className="form-group">
+      <label>&nbsp;</label>
+      <button 
+        className="btn btn-secondary form-control"
+        onClick={clearFilters}
+      >
+        Limpiar Filtros
+      </button>
+    </div>
+  </div>
+</div>
 
       {/* Tabla de productos */}
       <div className="card">

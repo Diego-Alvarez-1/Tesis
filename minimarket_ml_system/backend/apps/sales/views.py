@@ -134,6 +134,47 @@ class SaleViewSet(viewsets.ModelViewSet):
         
         return queryset.order_by('-sale_date')
     
+    def perform_create(self, serializer):
+        # Generar número de venta
+        last_sale = Sale.objects.order_by('-id').first()
+        if last_sale:
+            sale_number = f"V{str(int(last_sale.sale_number[1:]) + 1).zfill(6)}"
+        else:
+            sale_number = "V000001"
+    
+    # CORRECCIÓN: Manejar usuario no autenticado
+        seller = None
+        if hasattr(self.request, 'user') and self.request.user.is_authenticated:
+            seller = self.request.user
+        else:
+            # Usar el primer superusuario disponible o crear uno
+            from django.contrib.auth.models import User
+            seller = User.objects.filter(is_superuser=True).first()
+            
+            if not seller:
+                # Crear usuario admin por defecto
+                seller, created = User.objects.get_or_create(
+                    username='admin',
+                    defaults={
+                        'email': 'admin@minimarket.com',
+                        'first_name': 'Admin',
+                        'last_name': 'Sistema',
+                        'is_superuser': True,
+                        'is_staff': True
+                    }
+                )
+                if created:
+                    seller.set_password('admin123')
+                    seller.save()
+                    print(f"✅ Usuario admin creado: {seller.username}")
+        
+        print(f"🔍 Creando venta con seller: {seller}")
+        
+        serializer.save(
+            sale_number=sale_number,
+            seller=seller
+        )
+    
     @action(detail=False, methods=['get'])
     def dashboard_stats(self, request):
         """Estadísticas para dashboard"""
@@ -249,6 +290,12 @@ class SaleViewSet(viewsets.ModelViewSet):
             product.current_stock += item.quantity
             product.save()
             
+            # CORRECCIÓN: Manejar usuario para movimientos de stock
+            user_for_movement = request.user if request.user.is_authenticated else None
+            if not user_for_movement:
+                from django.contrib.auth.models import User
+                user_for_movement = User.objects.filter(is_superuser=True).first()
+            
             # Crear movimiento de stock
             from apps.inventory.models import StockMovement
             StockMovement.objects.create(
@@ -259,7 +306,7 @@ class SaleViewSet(viewsets.ModelViewSet):
                 stock_before=product.current_stock - item.quantity,
                 stock_after=product.current_stock,
                 notes=f'Cancelación de venta {sale.sale_number}',
-                user=request.user,
+                user=user_for_movement,
                 reference_document=sale.sale_number
             )
         

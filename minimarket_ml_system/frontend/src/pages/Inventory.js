@@ -4,7 +4,8 @@ import {
   productsAPI,
   suppliersAPI,
   formatCurrency,
-  showAlert 
+  showAlert,
+  handleApiError
 } from '../services/api';
 
 const Inventory = () => {
@@ -120,23 +121,46 @@ const Inventory = () => {
   };
 
   const createPurchaseOrder = async (e) => {
-    e.preventDefault();
-    if (newPO.items.length === 0) {
-      showAlert('Agregue al menos un producto a la orden', 'warning');
-      return;
-    }
+  e.preventDefault();
+  
+  if (newPO.items.length === 0) {
+    showAlert('Agregue al menos un producto a la orden', 'warning');
+    return;
+  }
 
-    try {
-      await inventoryAPI.createPurchaseOrder(newPO);
-      showAlert('Orden de compra creada exitosamente', 'success');
-      setShowPOModal(false);
-      setNewPO({ supplier: '', expected_date: '', notes: '', items: [] });
-      loadPurchaseOrders();
-    } catch (error) {
-      console.error('Error creando orden:', error);
-      showAlert('Error creando orden de compra', 'danger');
-    }
-  };
+  if (!newPO.supplier) {
+    showAlert('Seleccione un proveedor', 'warning');
+    return;
+  }
+
+  try {
+    // Preparar datos de la orden - CORRECCIÓN APLICADA
+    const orderData = {
+      supplier: Number(newPO.supplier), // Asegurar que sea número
+      expected_date: newPO.expected_date || null,
+      notes: newPO.notes || '',
+      items: newPO.items.map(item => ({
+        product: Number(item.product), // Asegurar que sea número
+        quantity_ordered: Number(item.quantity_ordered), // Asegurar que sea número
+        unit_price: Number(item.unit_price) // Asegurar que sea número
+      }))
+    };
+
+    console.log('Enviando orden de compra:', orderData);
+    
+    const response = await inventoryAPI.createPurchaseOrder(orderData);
+    console.log('Respuesta de orden:', response);
+    
+    showAlert('Orden de compra creada exitosamente', 'success');
+    setShowPOModal(false);
+    setNewPO({ supplier: '', expected_date: '', notes: '', items: [] });
+    loadPurchaseOrders();
+    
+  } catch (error) {
+    console.error('Error creando orden:', error);
+    handleApiError(error, 'Error creando orden de compra');
+  }
+};
 
   const approvePurchaseOrder = async (po) => {
     if (window.confirm(`¿Aprobar la orden de compra ${po.order_number}?`)) {
@@ -481,7 +505,12 @@ const Inventory = () => {
                       <td>{item.category_name}</td>
                       <td>{item.current_stock}</td>
                       <td>{item.min_stock}</td>
-                      <td>{item.days_of_stock?.toFixed(1) || 'N/A'}</td>
+                      <td>
+                            {item.days_of_stock !== null && item.days_of_stock !== undefined && !isNaN(item.days_of_stock) 
+                              ? Number(item.days_of_stock).toFixed(1) 
+                              : 'N/A'
+                            }
+                          </td>
                       <td>{item.suggested_order}</td>
                       <td>
                         <span className={`alert ${

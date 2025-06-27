@@ -10,6 +10,14 @@ import {
   safeString
 } from '../services/api';
 
+// FUNCIÓN HELPER PARA toFixed SEGURO
+const safeToFixed = (value, decimals = 2, defaultValue = '0.00') => {
+  if (value === null || value === undefined || value === "" || isNaN(value)) {
+    return defaultValue;
+  }
+  return Number(value).toFixed(decimals);
+};
+
 const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState({});
@@ -37,17 +45,34 @@ const Analytics = () => {
         setDashboardData({});
       }
 
-      // Procesar tendencias de ventas
+      // Procesar tendencias de ventas con validación mejorada
       if (results[1].status === 'fulfilled') {
-        setSalesTrends(results[1].value.data || {});
+        const trendsData = results[1].value.data || {};
+        // Validar estructura de datos antes de establecer
+        const validatedTrends = {
+          summary: {
+            total_sales: safeValue(trendsData.summary?.total_sales, 0),
+            total_profit: safeValue(trendsData.summary?.total_profit, 0),
+            avg_daily_sales: safeValue(trendsData.summary?.avg_daily_sales, 0),
+            avg_profit_margin: safeValue(trendsData.summary?.avg_profit_margin, 0)
+          },
+          daily_data: Array.isArray(trendsData.daily_data) ? trendsData.daily_data : [],
+          best_day: trendsData.best_day || null,
+          worst_day: trendsData.worst_day || null
+        };
+        setSalesTrends(validatedTrends);
       } else {
         console.error('Error cargando tendencias:', results[1].reason);
-        setSalesTrends({});
+        setSalesTrends({
+          summary: { total_sales: 0, total_profit: 0, avg_daily_sales: 0, avg_profit_margin: 0 },
+          daily_data: [],
+          best_day: null,
+          worst_day: null
+        });
       }
 
       // Procesar productos top (usamos stats de ventas)
       if (results[2].status === 'fulfilled') {
-        // Los productos top están en dashboardData, no necesitamos salesData
         console.log('Stats de ventas cargadas correctamente');
       } else {
         console.error('Error cargando stats de ventas:', results[2].reason);
@@ -169,7 +194,7 @@ const Analytics = () => {
         </div>
       )}
 
-      {/* Tendencias de ventas */}
+      {/* Tendencias de ventas - CORREGIDO */}
       {salesTrends && Object.keys(salesTrends).length > 0 && (
         <div className="card">
           <h2>Tendencias de Ventas - Últimos {selectedPeriod} días</h2>
@@ -189,7 +214,8 @@ const Analytics = () => {
                 <p>Promedio Diario</p>
               </div>
               <div className="stats-card info">
-                <h3>{safeValue(salesTrends.summary.avg_profit_margin, 0).toFixed(1)}%</h3>
+                {/* CORRECCIÓN APLICADA AQUÍ */}
+                <h3>{safeToFixed(salesTrends.summary.avg_profit_margin, 1)}%</h3>
                 <p>Margen Promedio</p>
               </div>
             </div>
@@ -230,7 +256,8 @@ const Analytics = () => {
                       <td>{formatCurrency(safeValue(day.total_sales, 0))}</td>
                       <td>{safeValue(day.sale_count, 0)}</td>
                       <td>{safeValue(day.products_sold, 0)}</td>
-                      <td>{safeValue(day.profit_margin, 0).toFixed(1)}%</td>
+                      {/* CORRECCIÓN APLICADA AQUÍ TAMBIÉN */}
+                      <td>{safeToFixed(day.profit_margin, 1)}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -275,7 +302,8 @@ const Analytics = () => {
             <div>
               <p><strong>Ingresos Totales:</strong> {formatCurrency(safeValue(salesTrends.summary.total_sales, 0))}</p>
               <p><strong>Ganancias:</strong> {formatCurrency(safeValue(salesTrends.summary.total_profit, 0))}</p>
-              <p><strong>Margen Promedio:</strong> {safeValue(salesTrends.summary.avg_profit_margin, 0).toFixed(2)}%</p>
+              {/* CORRECCIÓN APLICADA AQUÍ */}
+              <p><strong>Margen Promedio:</strong> {safeToFixed(salesTrends.summary.avg_profit_margin, 2)}%</p>
               <p><strong>Ventas por Día:</strong> {formatCurrency(safeValue(salesTrends.summary.avg_daily_sales, 0))}</p>
             </div>
           ) : (
@@ -294,6 +322,7 @@ const Analytics = () => {
         </div>
       </div>
 
+      {/* Resto del componente permanece igual... */}
       {/* Recomendaciones */}
       <div className="card">
         <h2>Recomendaciones de Negocio</h2>

@@ -201,54 +201,70 @@ const Sales = () => {
     return subtotal - generalDiscount;
   };
 
-  const submitNewSale = async (e) => {
-    e.preventDefault();
-    
-    if (newSale.items.length === 0) {
-      showAlert('Agregue al menos un producto a la venta', 'warning');
-      return;
+const submitNewSale = async (e) => {
+  e.preventDefault();
+  
+  if (newSale.items.length === 0) {
+    showAlert('Agregue al menos un producto a la venta', 'warning');
+    return;
+  }
+
+  try {
+    // Validar stock antes de crear la venta
+    for (const item of newSale.items) {
+      const product = products.find(p => p.id === item.product);
+      if (product && item.quantity > product.current_stock) {
+        showAlert(`Stock insuficiente para ${product.name}. Disponible: ${product.current_stock}`, 'warning');
+        return;
+      }
     }
 
-    try {
-      // Validar stock antes de crear la venta
-      for (const item of newSale.items) {
-        const product = products.find(p => p.id === item.product);
-        if (product && item.quantity > product.current_stock) {
-          showAlert(`Stock insuficiente para ${product.name}. Disponible: ${product.current_stock}`, 'warning');
-          return;
-        }
-      }
+    // Preparar datos de la venta - CORRECCIÓN APLICADA
+    const saleData = {
+      customer: newSale.customer || null,
+      payment_method: newSale.payment_method,
+      discount_percentage: Number(newSale.discount_percentage) || 0,
+      notes: newSale.notes || '',
+      items: newSale.items.map(item => ({
+        product: Number(item.product), // Asegurar que sea número
+        quantity: Number(item.quantity), // Asegurar que sea número
+        unit_price: Number(item.unit_price), // Asegurar que sea número
+        discount_percentage: Number(item.discount_percentage) || 0
+      }))
+    };
 
-      // Preparar datos de la venta
-      const saleData = {
-        ...newSale,
-        customer: newSale.customer || null, // null si no hay cliente seleccionado
-        items: newSale.items.map(item => ({
-          product: item.product,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          discount_percentage: item.discount_percentage || 0
-        }))
-      };
-
-      console.log('Enviando venta:', saleData);
-      
-      await salesAPI.createSale(saleData);
-      showAlert('Venta creada exitosamente', 'success');
-      setShowNewSaleModal(false);
-      
-      // Recargar datos
-      loadData();
-      loadProducts(); // Recargar productos para actualizar stock
-      
-    } catch (error) {
-      console.error('Error creando venta:', error);
-      if (error.response?.data) {
-        console.error('Detalles del error:', error.response.data);
+    console.log('Enviando venta:', saleData);
+    
+    const response = await salesAPI.createSale(saleData);
+    console.log('Respuesta de venta:', response);
+    
+    showAlert('Venta creada exitosamente', 'success');
+    setShowNewSaleModal(false);
+    
+    // Recargar datos
+    loadData();
+    loadProducts();
+    
+  } catch (error) {
+    console.error('Error creando venta:', error);
+    
+    // Manejo mejorado de errores
+    if (error.response?.data?.items) {
+      const itemErrors = error.response.data.items;
+      if (Array.isArray(itemErrors)) {
+        itemErrors.forEach((itemError, index) => {
+          if (itemError && typeof itemError === 'object') {
+            Object.keys(itemError).forEach(field => {
+              showAlert(`Item ${index + 1} - ${field}: ${itemError[field]}`, 'danger');
+            });
+          }
+        });
       }
+    } else {
       handleApiError(error, 'Error creando venta');
     }
-  };
+  }
+};
 
   const cancelSale = async (sale) => {
     if (window.confirm(`¿Está seguro de cancelar la venta ${sale.sale_number}?`)) {

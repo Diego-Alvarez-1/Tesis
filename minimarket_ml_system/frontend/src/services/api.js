@@ -264,7 +264,7 @@ export const analyticsAPI = {
   testAnalytics: () => api.get('/analytics/test/'),
 };
 
-// ===== FUNCIONES UTILITARIAS =====
+// ===== FUNCIONES UTILITARIAS CORREGIDAS =====
 
 // Formatear moneda en soles peruanos
 export const formatCurrency = (amount) => {
@@ -291,8 +291,12 @@ export const formatDateTime = (datetime) => {
 
 // Función para mostrar alertas
 export const showAlert = (message, type = 'info') => {
+  // Remover alertas existentes
+  const existingAlerts = document.querySelectorAll('.fixed-alert');
+  existingAlerts.forEach(alert => alert.remove());
+  
   const alertDiv = document.createElement('div');
-  alertDiv.className = `alert alert-${type}`;
+  alertDiv.className = `alert alert-${type} fixed-alert`;
   alertDiv.textContent = message;
   alertDiv.style.cssText = `
     position: fixed;
@@ -300,6 +304,7 @@ export const showAlert = (message, type = 'info') => {
     right: 20px;
     z-index: 9999;
     min-width: 300px;
+    max-width: 500px;
     padding: 12px 16px;
     border-radius: 4px;
     color: white;
@@ -311,7 +316,15 @@ export const showAlert = (message, type = 'info') => {
       type === 'warning' ? '#f59e0b' :
       '#3b82f6'
     };
+    cursor: pointer;
   `;
+  
+  // Agregar evento de click para cerrar
+  alertDiv.addEventListener('click', () => {
+    if (alertDiv.parentNode) {
+      alertDiv.parentNode.removeChild(alertDiv);
+    }
+  });
   
   document.body.appendChild(alertDiv);
   
@@ -322,29 +335,217 @@ export const showAlert = (message, type = 'info') => {
   }, 5000);
 };
 
-// Función helper para manejar errores de API
+// Función helper para manejar errores de API - MEJORADA
 export const handleApiError = (error, defaultMessage = 'Error en la operación') => {
   console.error('API Error:', error);
   
-  if (error.response?.data?.detail) {
-    showAlert(error.response.data.detail, 'danger');
-  } else if (error.response?.data?.error) {
-    showAlert(error.response.data.error, 'danger');
+  let errorMessage = defaultMessage;
+  
+  if (error.response?.data) {
+    const errorData = error.response.data;
+    
+    // Manejar diferentes tipos de errores del backend Django
+    if (errorData.detail) {
+      errorMessage = errorData.detail;
+    } else if (errorData.error) {
+      errorMessage = errorData.error;
+    } else if (errorData.message) {
+      errorMessage = errorData.message;
+    } else if (typeof errorData === 'string') {
+      errorMessage = errorData;
+    } else if (errorData.non_field_errors) {
+      errorMessage = Array.isArray(errorData.non_field_errors) 
+        ? errorData.non_field_errors.join(', ')
+        : errorData.non_field_errors;
+    } else {
+      // Manejar errores de validación de campos
+      const fieldErrors = [];
+      Object.keys(errorData).forEach(field => {
+        if (Array.isArray(errorData[field])) {
+          fieldErrors.push(`${field}: ${errorData[field].join(', ')}`);
+        } else if (typeof errorData[field] === 'string') {
+          fieldErrors.push(`${field}: ${errorData[field]}`);
+        }
+      });
+      
+      if (fieldErrors.length > 0) {
+        errorMessage = fieldErrors.join('; ');
+      }
+    }
   } else if (error.message) {
-    showAlert(error.message, 'danger');
-  } else {
-    showAlert(defaultMessage, 'danger');
+    if (error.message.includes('Network Error')) {
+      errorMessage = 'Error de conexión. Verifique su conexión a internet y que el servidor esté funcionando.';
+    } else if (error.message.includes('timeout')) {
+      errorMessage = 'Tiempo de espera agotado. El servidor tardó demasiado en responder.';
+    } else {
+      errorMessage = error.message;
+    }
   }
+  
+  showAlert(errorMessage, 'danger');
+  return errorMessage;
 };
 
-// Función helper para manejar valores seguros
+// Función helper para manejar valores seguros - CORREGIDA
 export const safeValue = (value, defaultValue = 0) => {
-  return value !== null && value !== undefined && !isNaN(value) ? value : defaultValue;
+  if (value === null || value === undefined || value === "" || isNaN(value)) {
+    return defaultValue;
+  }
+  return Number(value);
+};
+
+// Nueva función específica para toFixed seguro
+export const safeToFixed = (value, decimals = 2, defaultValue = '0.00') => {
+  const num = safeValue(value, 0);
+  if (num === 0 && (value === null || value === undefined)) {
+    return defaultValue;
+  }
+  return num.toFixed(decimals);
 };
 
 // Función helper para manejar strings seguros
 export const safeString = (value, defaultValue = 'N/A') => {
-  return value && value.toString().trim() ? value.toString() : defaultValue;
+  if (value === null || value === undefined || value === '') {
+    return defaultValue;
+  }
+  return String(value).trim();
+};
+
+// Función helper para manejar arrays seguros
+export const safeArray = (value, defaultValue = []) => {
+  if (!Array.isArray(value)) {
+    return defaultValue;
+  }
+  return value;
+};
+
+// Función helper para manejar objetos seguros
+export const safeObject = (value, defaultValue = {}) => {
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return defaultValue;
+  }
+  return value;
+};
+
+// Función para validar datos antes de enviar al backend
+export const validateFormData = (data, requiredFields = []) => {
+  const errors = [];
+  
+  requiredFields.forEach(field => {
+    if (!data[field] || (typeof data[field] === 'string' && !data[field].trim())) {
+      errors.push(`${field} es requerido`);
+    }
+  });
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+// Función para normalizar datos de respuesta paginada
+export const normalizePaginatedResponse = (response) => {
+  const data = response?.data || {};
+  
+  return {
+    results: safeArray(data.results || data),
+    count: safeValue(data.count, 0),
+    next: data.next || null,
+    previous: data.previous || null,
+    page_size: safeValue(data.page_size, 20)
+  };
+};
+
+// Función para retry automático en caso de errores de red
+export const retryApiCall = async (apiCall, maxRetries = 3, delay = 1000) => {
+  let lastError;
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error;
+      
+      // Solo reintentar en errores de red o timeouts
+      if (error.code === 'NETWORK_ERROR' || error.code === 'ECONNABORTED') {
+        if (i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+          continue;
+        }
+      }
+      
+      // Si no es un error de red, no reintentar
+      throw error;
+    }
+  }
+  
+  throw lastError;
+};
+
+// Función para logging de debug
+export const debugLog = (message, data = null) => {
+  if (process.env.NODE_ENV === 'development') {
+    console.group(`🐛 ${message}`);
+    if (data) {
+      console.log('Data:', data);
+    }
+    console.trace();
+    console.groupEnd();
+  }
+};
+
+// Hook para manejar estados de carga
+export const createLoadingState = () => {
+  return {
+    loading: false,
+    error: null,
+    data: null
+  };
+};
+
+// Función para formatear errores de validación del backend Django
+export const formatValidationErrors = (errors) => {
+  if (!errors || typeof errors !== 'object') {
+    return 'Error de validación desconocido';
+  }
+  
+  const formattedErrors = [];
+  
+  Object.keys(errors).forEach(field => {
+    const fieldErrors = errors[field];
+    if (Array.isArray(fieldErrors)) {
+      fieldErrors.forEach(error => {
+        formattedErrors.push(`${field}: ${error}`);
+      });
+    } else if (typeof fieldErrors === 'string') {
+      formattedErrors.push(`${field}: ${fieldErrors}`);
+    }
+  });
+  
+  return formattedErrors.join('\n');
+};
+
+// Función para verificar conectividad con el backend
+export const checkBackendConnection = async () => {
+  try {
+    const response = await api.get('/products/test/');
+    return { connected: true, message: 'Conexión exitosa' };
+  } catch (error) {
+    console.error('Backend connection failed:', error);
+    return { 
+      connected: false, 
+      message: error.message || 'Error de conexión con el servidor' 
+    };
+  }
+};
+
+// Función para crear timestamps de audit
+export const createAuditInfo = () => {
+  return {
+    timestamp: new Date().toISOString(),
+    user_agent: navigator.userAgent,
+    url: window.location.href
+  };
 };
 
 export default api;
