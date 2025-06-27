@@ -2,35 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   mlAPI, 
   productsAPI,
-  formatCurrency,
-  showAlert 
+  showAlert,
+  handleApiError,
+  safeValue,
+  safeString
 } from '../services/api';
-import { Line } from 'react-chartjs-2';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 const Predictions = () => {
   const [models, setModels] = useState([]);
   const [products, setProducts] = useState([]);
-  const [predictions, setPredictions] = useState([]);
   const [reorderRecommendations, setReorderRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [predictionLoading, setPredictionLoading] = useState(false);
@@ -50,18 +30,44 @@ const Predictions = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [modelsRes, productsRes, reorderRes] = await Promise.all([
+      
+      // Cargar datos en paralelo
+      const results = await Promise.allSettled([
         mlAPI.getModels(),
-        productsAPI.getProducts({ is_active: true }),
+        productsAPI.getProducts({ is_active: true, page_size: 1000 }),
         mlAPI.getReorderRecommendations({ limit: 20 })
       ]);
       
-      setModels(modelsRes.data.results || modelsRes.data);
-      setProducts(productsRes.data.results || productsRes.data);
-      setReorderRecommendations(reorderRes.data.recommendations || []);
+      // Procesar modelos
+      if (results[0].status === 'fulfilled') {
+        const modelsData = results[0].value.data;
+        setModels(modelsData.results || modelsData || []);
+      } else {
+        console.error('Error cargando modelos:', results[0].reason);
+        setModels([]);
+      }
+
+      // Procesar productos
+      if (results[1].status === 'fulfilled') {
+        const productsData = results[1].value.data;
+        setProducts(productsData.results || productsData || []);
+      } else {
+        console.error('Error cargando productos:', results[1].reason);
+        setProducts([]);
+      }
+
+      // Procesar recomendaciones
+      if (results[2].status === 'fulfilled') {
+        const reorderData = results[2].value.data;
+        setReorderRecommendations(reorderData.recommendations || reorderData || []);
+      } else {
+        console.error('Error cargando recomendaciones:', results[2].reason);
+        setReorderRecommendations([]);
+      }
+      
     } catch (error) {
       console.error('Error cargando datos:', error);
-      showAlert('Error cargando datos de predicciones', 'danger');
+      handleApiError(error, 'Error cargando datos de predicciones');
     } finally {
       setLoading(false);
     }
@@ -87,7 +93,8 @@ const Predictions = () => {
       showAlert('Predicción generada exitosamente', 'success');
     } catch (error) {
       console.error('Error generando predicción:', error);
-      showAlert('Error generando predicción', 'danger');
+      handleApiError(error, 'Error generando predicción');
+      setPredictionResult(null);
     } finally {
       setPredictionLoading(false);
     }
@@ -112,7 +119,8 @@ const Predictions = () => {
       showAlert('Predicciones en lote generadas exitosamente', 'success');
     } catch (error) {
       console.error('Error generando predicciones en lote:', error);
-      showAlert('Error generando predicciones en lote', 'danger');
+      handleApiError(error, 'Error generando predicciones en lote');
+      setBatchResults([]);
     } finally {
       setPredictionLoading(false);
     }
@@ -132,65 +140,54 @@ const Predictions = () => {
       };
       
       const response = await mlAPI.trainNewModel(data);
-      showAlert('Modelo entrenado exitosamente', 'success');
-      loadData(); // Recargar modelos
+      if (response.data.success) {
+        showAlert('Modelo entrenado exitosamente', 'success');
+        loadData(); // Recargar modelos
+      } else {
+        showAlert('Error entrenando modelo', 'danger');
+      }
     } catch (error) {
       console.error('Error entrenando modelo:', error);
-      showAlert('Error entrenando modelo', 'danger');
+      handleApiError(error, 'Error entrenando modelo');
     } finally {
       setPredictionLoading(false);
     }
   };
 
-  const getPredictionChart = () => {
-    if (!predictionResult || !predictionResult.predictions) return null;
+  const SimpleChart = ({ data }) => {
+    if (!data || !data.predictions || data.predictions.length === 0) {
+      return <p>No hay datos para mostrar el gráfico</p>;
+    }
 
-    const data = {
-      labels: predictionResult.predictions.map(p => new Date(p.date).toLocaleDateString()),
-      datasets: [
-        {
-          label: 'Demanda Predicha',
-          data: predictionResult.predictions.map(p => p.predicted_quantity),
-          borderColor: 'rgb(75, 192, 192)',
-          backgroundColor: 'rgba(75, 192, 192, 0.2)',
-          tension: 0.1
-        },
-        {
-          label: 'Límite Superior',
-          data: predictionResult.predictions.map(p => p.upper_bound),
-          borderColor: 'rgba(255, 99, 132, 0.5)',
-          backgroundColor: 'rgba(255, 99, 132, 0.1)',
-          borderDash: [5, 5]
-        },
-        {
-          label: 'Límite Inferior',
-          data: predictionResult.predictions.map(p => p.lower_bound),
-          borderColor: 'rgba(255, 99, 132, 0.5)',
-          backgroundColor: 'rgba(255, 99, 132, 0.1)',
-          borderDash: [5, 5]
-        }
-      ]
-    };
+    const maxValue = Math.max(...data.predictions.map(p => p.predicted_quantity));
+    const chartHeight = 200;
 
-    const options = {
-      responsive: true,
-      plugins: {
-        legend: {
-          position: 'top',
-        },
-        title: {
-          display: true,
-          text: `Predicción de Demanda - ${predictionResult.product?.name}`,
-        },
-      },
-      scales: {
-        y: {
-          beginAtZero: true
-        }
-      }
-    };
-
-    return <Line data={data} options={options} />;
+    return (
+      <div style={{ padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
+        <h4>Gráfico de Predicción - {data.product?.name}</h4>
+        <div style={{ display: 'flex', alignItems: 'end', height: chartHeight, gap: '2px' }}>
+          {data.predictions.slice(0, 30).map((prediction, index) => {
+            const height = (prediction.predicted_quantity / maxValue) * (chartHeight - 40);
+            return (
+              <div
+                key={index}
+                style={{
+                  height: `${height}px`,
+                  backgroundColor: '#3498db',
+                  flex: 1,
+                  minWidth: '8px',
+                  borderRadius: '2px 2px 0 0'
+                }}
+                title={`${new Date(prediction.date).toLocaleDateString()}: ${prediction.predicted_quantity.toFixed(2)}`}
+              />
+            );
+          })}
+        </div>
+        <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+          Últimos 30 días de predicción
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -201,6 +198,8 @@ const Predictions = () => {
       </div>
     );
   }
+
+  const defaultModel = models.find(m => m.is_default);
 
   return (
     <div className="predictions-page">
@@ -213,10 +212,19 @@ const Predictions = () => {
           <div>
             {models.length > 0 ? (
               <div>
-                <p><strong>Modelo Activo:</strong> {models.find(m => m.is_default)?.name || 'No hay modelo por defecto'}</p>
-                <p><strong>Tipo:</strong> {models.find(m => m.is_default)?.model_type_display}</p>
-                <p><strong>Entrenado:</strong> {models.find(m => m.is_default) ? 
-                  new Date(models.find(m => m.is_default).training_date).toLocaleDateString() : 'N/A'}</p>
+                <p><strong>Modelos Disponibles:</strong> {models.length}</p>
+                {defaultModel ? (
+                  <>
+                    <p><strong>Modelo Activo:</strong> {defaultModel.name}</p>
+                    <p><strong>Tipo:</strong> {defaultModel.model_type_display}</p>
+                    <p><strong>Entrenado:</strong> {new Date(defaultModel.training_date).toLocaleDateString()}</p>
+                    {defaultModel.metrics && (
+                      <p><strong>Precisión:</strong> Disponible</p>
+                    )}
+                  </>
+                ) : (
+                  <p><strong>Modelo por Defecto:</strong> No configurado</p>
+                )}
               </div>
             ) : (
               <div className="alert alert-warning">
@@ -232,11 +240,16 @@ const Predictions = () => {
             >
               {predictionLoading ? 'Entrenando...' : 'Entrenar Nuevo Modelo'}
             </button>
+            {models.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <small>El entrenamiento puede tomar varios minutos</small>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {models.length > 0 && (
+      {models.length > 0 && defaultModel && (
         <>
           {/* Predicción individual */}
           <div className="card">
@@ -299,21 +312,28 @@ const Predictions = () => {
               <h2>Resultado de Predicción</h2>
               <div className="grid grid-3">
                 <div className="stats-card">
-                  <h3>{predictionResult.summary?.total_predicted?.toFixed(2) || 0}</h3>
+                  <h3>{safeValue(predictionResult.summary?.total_predicted, 0).toFixed(2)}</h3>
                   <p>Total Predicho</p>
                 </div>
                 <div className="stats-card success">
-                  <h3>{predictionResult.summary?.avg_daily?.toFixed(2) || 0}</h3>
+                  <h3>{safeValue(predictionResult.summary?.avg_daily, 0).toFixed(2)}</h3>
                   <p>Promedio Diario</p>
                 </div>
                 <div className="stats-card warning">
-                  <h3>{predictionResult.summary?.max_daily?.toFixed(2) || 0}</h3>
+                  <h3>{safeValue(predictionResult.summary?.max_daily, 0).toFixed(2)}</h3>
                   <p>Máximo Diario</p>
                 </div>
               </div>
               
-              <div style={{ marginTop: '2rem', height: '400px' }}>
-                {getPredictionChart()}
+              {predictionResult.product && (
+                <div style={{ marginTop: '1rem' }}>
+                  <p><strong>Producto:</strong> {predictionResult.product.name}</p>
+                  <p><strong>Stock Actual:</strong> {predictionResult.product.current_stock}</p>
+                </div>
+              )}
+              
+              <div style={{ marginTop: '2rem' }}>
+                <SimpleChart data={predictionResult} />
               </div>
             </div>
           )}
@@ -341,7 +361,7 @@ const Predictions = () => {
             <button 
               className="btn btn-primary"
               onClick={handleBatchPrediction}
-              disabled={predictionLoading}
+              disabled={predictionLoading || batchProducts.length === 0}
             >
               {predictionLoading ? 'Prediciendo...' : 'Generar Predicciones en Lote'}
             </button>
@@ -363,9 +383,9 @@ const Predictions = () => {
                 <tbody>
                   {batchResults.map((result, index) => (
                     <tr key={index}>
-                      <td>{result.product_name}</td>
-                      <td>{result.success ? result.total_predicted?.toFixed(2) : 'Error'}</td>
-                      <td>{result.success ? result.avg_daily?.toFixed(2) : 'Error'}</td>
+                      <td>{safeString(result.product_name)}</td>
+                      <td>{result.success ? safeValue(result.total_predicted, 0).toFixed(2) : 'Error'}</td>
+                      <td>{result.success ? safeValue(result.avg_daily, 0).toFixed(2) : 'Error'}</td>
                       <td>
                         <span className={`alert ${result.success ? 'alert-success' : 'alert-danger'}`}
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
@@ -399,11 +419,11 @@ const Predictions = () => {
             <tbody>
               {reorderRecommendations.map((rec, index) => (
                 <tr key={index}>
-                  <td>{rec.product_name}</td>
-                  <td>{rec.current_stock}</td>
-                  <td>{rec.predicted_demand_total?.toFixed(2)}</td>
-                  <td>{rec.days_of_stock_available?.toFixed(1)}</td>
-                  <td>{rec.suggested_order_quantity?.toFixed(0)}</td>
+                  <td>{safeString(rec.product_name)}</td>
+                  <td>{safeValue(rec.current_stock, 0)}</td>
+                  <td>{safeValue(rec.predicted_demand_total, 0).toFixed(2)}</td>
+                  <td>{safeValue(rec.days_of_stock_available, 0).toFixed(1)}</td>
+                  <td>{safeValue(rec.suggested_order_quantity, 0).toFixed(0)}</td>
                   <td>
                     <span className={`alert ${
                       rec.priority === 'CRITICAL' ? 'alert-danger' :
@@ -411,7 +431,7 @@ const Predictions = () => {
                       rec.priority === 'MEDIUM' ? 'alert-info' :
                       'alert-success'
                     }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {rec.priority}
+                      {safeString(rec.priority)}
                     </span>
                   </td>
                 </tr>
@@ -419,8 +439,34 @@ const Predictions = () => {
             </tbody>
           </table>
         ) : (
-          <p>No hay recomendaciones de reorden disponibles</p>
+          <div className="alert alert-info">
+            No hay recomendaciones de reorden disponibles
+          </div>
         )}
+      </div>
+
+      {/* Información del sistema ML */}
+      <div className="card">
+        <h2>Información del Sistema ML</h2>
+        <div className="grid grid-3">
+          <div>
+            <h4>Modelos Disponibles</h4>
+            <p><strong>{models.length}</strong> modelos entrenados</p>
+            {defaultModel && (
+              <p>Activo: {defaultModel.name}</p>
+            )}
+          </div>
+          <div>
+            <h4>Productos Analizables</h4>
+            <p><strong>{products.length}</strong> productos activos</p>
+            <p>Disponibles para predicción</p>
+          </div>
+          <div>
+            <h4>Recomendaciones</h4>
+            <p><strong>{reorderRecommendations.length}</strong> productos</p>
+            <p>Requieren atención</p>
+          </div>
+        </div>
       </div>
 
       {/* Acciones rápidas */}

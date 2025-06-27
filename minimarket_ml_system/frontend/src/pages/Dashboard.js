@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   productsAPI, 
   salesAPI, 
-  inventoryAPI, 
   analyticsAPI,
   formatCurrency,
-  showAlert 
+  showAlert,
+  safeValue,
+  safeString
 } from '../services/api';
 
 const Dashboard = () => {
@@ -18,22 +19,12 @@ const Dashboard = () => {
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Cargar estadísticas en paralelo
-      const [
-        productsStatsRes,
-        salesStatsRes,
-        overviewRes,
-        lowStockRes,
-        salesRes
-      ] = await Promise.all([
+      // Cargar estadísticas en paralelo con manejo de errores individual
+      const results = await Promise.allSettled([
         productsAPI.getDashboardStats(),
         salesAPI.getDashboardStats(),
         analyticsAPI.getDashboardOverview(),
@@ -41,21 +32,79 @@ const Dashboard = () => {
         salesAPI.getSales({ page_size: 10 })
       ]);
 
-      setStats({
-        products: productsStatsRes.data,
-        sales: salesStatsRes.data,
-        overview: overviewRes.data
-      });
-      
-      setLowStockProducts(lowStockRes.data.products || []);
-      setRecentSales(salesRes.data.results || []);
+      // Procesar resultados de productos
+      if (results[0].status === 'fulfilled') {
+        setStats(prev => ({ ...prev, products: results[0].value.data || {} }));
+      } else {
+        console.error('Error cargando stats de productos:', results[0].reason);
+      }
+
+      // Procesar resultados de ventas
+      if (results[1].status === 'fulfilled') {
+        setStats(prev => ({ ...prev, sales: results[1].value.data || {} }));
+      } else {
+        console.error('Error cargando stats de ventas:', results[1].reason);
+      }
+
+      // Procesar overview de analytics
+      if (results[2].status === 'fulfilled') {
+        setStats(prev => ({ ...prev, overview: results[2].value.data || {} }));
+      } else {
+        console.error('Error cargando overview:', results[2].reason);
+      }
+
+      // Procesar productos con stock bajo
+      if (results[3].status === 'fulfilled') {
+        const lowStockData = results[3].value.data;
+        setLowStockProducts(lowStockData.products || []);
+      } else {
+        console.error('Error cargando productos con stock bajo:', results[3].reason);
+        setLowStockProducts([]);
+      }
+
+      // Procesar ventas recientes
+      if (results[4].status === 'fulfilled') {
+        const salesData = results[4].value.data;
+        setRecentSales(salesData.results || salesData || []);
+      } else {
+        console.error('Error cargando ventas recientes:', results[4].reason);
+        setRecentSales([]);
+      }
       
     } catch (error) {
-      console.error('Error cargando dashboard:', error);
+      console.error('Error general cargando dashboard:', error);
       showAlert('Error cargando datos del dashboard', 'danger');
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
+
+  // Funciones helper para obtener valores seguros
+  const getTodaySales = () => {
+    return {
+      count: safeValue(stats.sales.today?.sales_count, 0),
+      amount: safeValue(stats.sales.today?.total_amount, 0)
+    };
+  };
+
+  const getProductsStats = () => {
+    return {
+      total: safeValue(stats.products.total_products, 0),
+      lowStock: safeValue(stats.products.low_stock_products, 0),
+      outOfStock: safeValue(stats.products.out_of_stock_products, 0)
+    };
+  };
+
+  const getPaymentMethods = () => {
+    return stats.sales.payment_methods || [];
+  };
+
+  const getCategoriesStats = () => {
+    return stats.products.categories_stats || [];
   };
 
   if (loading) {
@@ -67,6 +116,11 @@ const Dashboard = () => {
     );
   }
 
+  const todaySales = getTodaySales();
+  const productsStats = getProductsStats();
+  const paymentMethods = getPaymentMethods();
+  const categoriesStats = getCategoriesStats();
+
   return (
     <div className="dashboard">
       <h1>Dashboard - Sistema Minimarket ML</h1>
@@ -74,22 +128,22 @@ const Dashboard = () => {
       {/* Estadísticas principales */}
       <div className="grid grid-4">
         <div className="stats-card">
-          <h3>{stats.products.total_products || 0}</h3>
+          <h3>{productsStats.total}</h3>
           <p>Total Productos</p>
         </div>
         
         <div className="stats-card success">
-          <h3>{formatCurrency(stats.sales.today?.total_amount || 0)}</h3>
+          <h3>{formatCurrency(todaySales.amount)}</h3>
           <p>Ventas Hoy</p>
         </div>
         
         <div className="stats-card warning">
-          <h3>{stats.products.low_stock_products || 0}</h3>
+          <h3>{productsStats.lowStock}</h3>
           <p>Stock Bajo</p>
         </div>
         
         <div className="stats-card danger">
-          <h3>{stats.products.out_of_stock_products || 0}</h3>
+          <h3>{productsStats.outOfStock}</h3>
           <p>Sin Stock</p>
         </div>
       </div>
@@ -101,18 +155,18 @@ const Dashboard = () => {
           <div className="grid grid-3">
             <div>
               <h4>Hoy</h4>
-              <p><strong>{stats.sales.today?.sales_count || 0}</strong> ventas</p>
-              <p>{formatCurrency(stats.sales.today?.total_amount || 0)}</p>
+              <p><strong>{todaySales.count}</strong> ventas</p>
+              <p>{formatCurrency(todaySales.amount)}</p>
             </div>
             <div>
               <h4>Ayer</h4>
-              <p><strong>{stats.sales.yesterday?.sales_count || 0}</strong> ventas</p>
-              <p>{formatCurrency(stats.sales.yesterday?.total_amount || 0)}</p>
+              <p><strong>{safeValue(stats.sales.yesterday?.sales_count, 0)}</strong> ventas</p>
+              <p>{formatCurrency(safeValue(stats.sales.yesterday?.total_amount, 0))}</p>
             </div>
             <div>
               <h4>Este Mes</h4>
-              <p><strong>{stats.sales.this_month?.sales_count || 0}</strong> ventas</p>
-              <p>{formatCurrency(stats.sales.this_month?.total_amount || 0)}</p>
+              <p><strong>{safeValue(stats.sales.this_month?.sales_count, 0)}</strong> ventas</p>
+              <p>{formatCurrency(safeValue(stats.sales.this_month?.total_amount, 0))}</p>
             </div>
           </div>
         </div>
@@ -120,19 +174,23 @@ const Dashboard = () => {
         <div className="card">
           <h2>Métodos de Pago</h2>
           <div className="payment-methods">
-            {stats.sales.payment_methods?.map((method, index) => (
-              <div key={index} style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between',
-                padding: '0.5rem 0',
-                borderBottom: '1px solid #eee'
-              }}>
-                <span>{method.payment_method}</span>
-                <div>
-                  <strong>{method.count}</strong> ({formatCurrency(method.total)})
+            {paymentMethods.length > 0 ? (
+              paymentMethods.map((method, index) => (
+                <div key={index} style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between',
+                  padding: '0.5rem 0',
+                  borderBottom: '1px solid #eee'
+                }}>
+                  <span>{safeString(method.payment_method)}</span>
+                  <div>
+                    <strong>{safeValue(method.count, 0)}</strong> ({formatCurrency(safeValue(method.total, 0))})
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p>No hay datos de métodos de pago</p>
+            )}
           </div>
         </div>
       </div>
@@ -153,18 +211,18 @@ const Dashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {lowStockProducts.slice(0, 10).map((product) => (
-                    <tr key={product.id}>
-                      <td>{product.name}</td>
-                      <td>{product.current_stock}</td>
-                      <td>{product.min_stock}</td>
+                  {lowStockProducts.slice(0, 10).map((product, index) => (
+                    <tr key={product.id || index}>
+                      <td>{safeString(product.name)}</td>
+                      <td>{safeValue(product.current_stock, 0)}</td>
+                      <td>{safeValue(product.min_stock, 0)}</td>
                       <td>
                         <span className={`alert ${
                           product.stock_status === 'SIN_STOCK' ? 'alert-danger' :
                           product.stock_status === 'STOCK_BAJO' ? 'alert-warning' :
                           'alert-success'
                         }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                          {product.stock_status}
+                          {safeString(product.stock_status, 'NORMAL')}
                         </span>
                       </td>
                     </tr>
@@ -173,7 +231,9 @@ const Dashboard = () => {
               </table>
             </div>
           ) : (
-            <p>No hay productos con stock bajo</p>
+            <div className="alert alert-success">
+              ¡Excelente! No hay productos con stock bajo.
+            </div>
           )}
         </div>
 
@@ -193,33 +253,58 @@ const Dashboard = () => {
                 <tbody>
                   {recentSales.slice(0, 10).map((sale) => (
                     <tr key={sale.id}>
-                      <td>{sale.sale_number}</td>
-                      <td>{sale.customer_name || 'Cliente General'}</td>
-                      <td>{formatCurrency(sale.total)}</td>
-                      <td>{new Date(sale.sale_date).toLocaleDateString()}</td>
+                      <td>{safeString(sale.sale_number)}</td>
+                      <td>{safeString(sale.customer_name, 'Cliente General')}</td>
+                      <td>{formatCurrency(safeValue(sale.total, 0))}</td>
+                      <td>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p>No hay ventas recientes</p>
+            <div className="alert alert-info">
+              No hay ventas recientes
+            </div>
           )}
         </div>
       </div>
 
       {/* Productos por categoría */}
-      <div className="card">
-        <h2>Productos por Categoría</h2>
-        <div className="grid grid-3">
-          {stats.products.categories_stats?.map((category, index) => (
-            <div key={index} className="category-stat">
-              <h4>{category.category}</h4>
-              <p><strong>{category.products_count}</strong> productos</p>
-            </div>
-          ))}
+      {categoriesStats.length > 0 && (
+        <div className="card">
+          <h2>Productos por Categoría</h2>
+          <div className="grid grid-3">
+            {categoriesStats.map((category, index) => (
+              <div key={index} className="category-stat">
+                <h4>{safeString(category.category)}</h4>
+                <p><strong>{safeValue(category.products_count, 0)}</strong> productos</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Información del sistema */}
+      {stats.overview && Object.keys(stats.overview).length > 0 && (
+        <div className="card">
+          <h2>Resumen General</h2>
+          <div className="grid grid-3">
+            <div>
+              <h4>Período</h4>
+              <p>{safeString(stats.overview.period, 'N/A')}</p>
+            </div>
+            <div>
+              <h4>Total Productos</h4>
+              <p><strong>{safeValue(stats.overview.summary?.total_products, 0)}</strong></p>
+            </div>
+            <div>
+              <h4>Ventas del Mes</h4>
+              <p>{formatCurrency(safeValue(stats.overview.summary?.month_sales_total, 0))}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Acciones rápidas */}
       <div className="card">

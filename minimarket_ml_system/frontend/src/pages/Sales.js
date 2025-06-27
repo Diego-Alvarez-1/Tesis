@@ -4,7 +4,10 @@ import {
   customersAPI,
   productsAPI,
   formatCurrency,
-  showAlert 
+  showAlert,
+  handleApiError,
+  safeValue,
+  safeString
 } from '../services/api';
 
 const Sales = () => {
@@ -50,10 +53,12 @@ const Sales = () => {
     try {
       setLoading(true);
       const response = await salesAPI.getSales(filters);
-      setSales(response.data.results || response.data);
+      const salesData = response.data;
+      setSales(salesData.results || salesData || []);
     } catch (error) {
       console.error('Error cargando ventas:', error);
-      showAlert('Error cargando ventas', 'danger');
+      handleApiError(error, 'Error cargando ventas');
+      setSales([]);
     } finally {
       setLoading(false);
     }
@@ -61,25 +66,36 @@ const Sales = () => {
 
   const loadProducts = async () => {
     try {
-      const response = await productsAPI.getProducts({ is_active: true });
-      setProducts(response.data.results || response.data);
+      const response = await productsAPI.getProducts({ is_active: true, page_size: 1000 });
+      const productsData = response.data;
+      setProducts(productsData.results || productsData || []);
     } catch (error) {
       console.error('Error cargando productos:', error);
+      setProducts([]);
     }
   };
 
   const loadCustomers = async () => {
     try {
-      const response = await customersAPI.getCustomers({ is_active: true });
-      setCustomers(response.data.results || response.data);
+      const response = await customersAPI.getCustomers({ is_active: true, page_size: 1000 });
+      const customersData = response.data;
+      setCustomers(customersData.results || customersData || []);
     } catch (error) {
       console.error('Error cargando clientes:', error);
+      setCustomers([]);
     }
   };
 
-  const openSaleModal = (sale) => {
-    setSelectedSale(sale);
-    setShowModal(true);
+  const openSaleModal = async (sale) => {
+    try {
+      // Obtener detalles completos de la venta
+      const response = await salesAPI.getSale(sale.id);
+      setSelectedSale(response.data);
+      setShowModal(true);
+    } catch (error) {
+      console.error('Error cargando detalles de venta:', error);
+      handleApiError(error, 'Error cargando detalles de venta');
+    }
   };
 
   const openNewSaleModal = () => {
@@ -90,12 +106,21 @@ const Sales = () => {
       notes: '',
       items: []
     });
+    setSelectedProduct(null);
+    setSearchProduct('');
+    setItemQuantity(1);
     setShowNewSaleModal(true);
   };
 
   const addItemToSale = () => {
     if (!selectedProduct || itemQuantity <= 0) {
       showAlert('Seleccione un producto y cantidad válida', 'warning');
+      return;
+    }
+
+    // Verificar stock disponible
+    if (itemQuantity > selectedProduct.current_stock) {
+      showAlert(`Stock insuficiente. Disponible: ${selectedProduct.current_stock}`, 'warning');
       return;
     }
 
@@ -107,7 +132,14 @@ const Sales = () => {
     if (existingItemIndex >= 0) {
       // Actualizar cantidad del item existente
       const updatedItems = [...newSale.items];
-      updatedItems[existingItemIndex].quantity += itemQuantity;
+      const newQuantity = updatedItems[existingItemIndex].quantity + itemQuantity;
+      
+      if (newQuantity > selectedProduct.current_stock) {
+        showAlert(`Stock insuficiente. Disponible: ${selectedProduct.current_stock}`, 'warning');
+        return;
+      }
+      
+      updatedItems[existingItemIndex].quantity = newQuantity;
       setNewSale(prev => ({ ...prev, items: updatedItems }));
     } else {
       // Agregar nuevo item
@@ -136,17 +168,37 @@ const Sales = () => {
 
   const updateItemQuantity = (index, quantity) => {
     if (quantity <= 0) return;
+    
+    const item = newSale.items[index];
+    const product = products.find(p => p.id === item.product);
+    
+    if (product && quantity > product.current_stock) {
+      showAlert(`Stock insuficiente. Disponible: ${product.current_stock}`, 'warning');
+      return;
+    }
+    
     const updatedItems = [...newSale.items];
     updatedItems[index].quantity = quantity;
     setNewSale(prev => ({ ...prev, items: updatedItems }));
   };
 
+  const updateItemDiscount = (index, discount) => {
+    if (discount < 0 || discount > 100) return;
+    
+    const updatedItems = [...newSale.items];
+    updatedItems[index].discount_percentage = discount;
+    setNewSale(prev => ({ ...prev, items: updatedItems }));
+  };
+
   const calculateSaleTotal = () => {
     const subtotal = newSale.items.reduce((total, item) => {
-      return total + (item.quantity * item.unit_price);
+      const itemTotal = item.quantity * item.unit_price;
+      const itemDiscount = itemTotal * (item.discount_percentage / 100);
+      return total + (itemTotal - itemDiscount);
     }, 0);
-    const discountAmount = subtotal * (newSale.discount_percentage / 100);
-    return subtotal - discountAmount;
+    
+    const generalDiscount = subtotal * (newSale.discount_percentage / 100);
+    return subtotal - generalDiscount;
   };
 
   const submitNewSale = async (e) => {
@@ -158,13 +210,43 @@ const Sales = () => {
     }
 
     try {
-      await salesAPI.createSale(newSale);
+      // Validar stock antes de crear la venta
+      for (const item of newSale.items) {
+        const product = products.find(p => p.id === item.product);
+        if (product && item.quantity > product.current_stock) {
+          showAlert(`Stock insuficiente para ${product.name}. Disponible: ${product.current_stock}`, 'warning');
+          return;
+        }
+      }
+
+      // Preparar datos de la venta
+      const saleData = {
+        ...newSale,
+        customer: newSale.customer || null, // null si no hay cliente seleccionado
+        items: newSale.items.map(item => ({
+          product: item.product,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_percentage: item.discount_percentage || 0
+        }))
+      };
+
+      console.log('Enviando venta:', saleData);
+      
+      await salesAPI.createSale(saleData);
       showAlert('Venta creada exitosamente', 'success');
       setShowNewSaleModal(false);
+      
+      // Recargar datos
       loadData();
+      loadProducts(); // Recargar productos para actualizar stock
+      
     } catch (error) {
       console.error('Error creando venta:', error);
-      showAlert('Error creando venta', 'danger');
+      if (error.response?.data) {
+        console.error('Detalles del error:', error.response.data);
+      }
+      handleApiError(error, 'Error creando venta');
     }
   };
 
@@ -176,7 +258,7 @@ const Sales = () => {
         loadData();
       } catch (error) {
         console.error('Error cancelando venta:', error);
-        showAlert('Error cancelando venta', 'danger');
+        handleApiError(error, 'Error cancelando venta');
       }
     }
   };
@@ -271,57 +353,63 @@ const Sales = () => {
       {/* Tabla de ventas */}
       <div className="card">
         <h3>Ventas ({sales.length})</h3>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Número</th>
-                <th>Cliente</th>
-                <th>Total</th>
-                <th>Método Pago</th>
-                <th>Estado</th>
-                <th>Fecha</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sales.map(sale => (
-                <tr key={sale.id}>
-                  <td>{sale.sale_number}</td>
-                  <td>{sale.customer_name || 'Cliente General'}</td>
-                  <td>{formatCurrency(sale.total)}</td>
-                  <td>{sale.payment_method}</td>
-                  <td>
-                    <span className={`alert ${
-                      sale.status === 'COMPLETED' ? 'alert-success' :
-                      sale.status === 'PENDING' ? 'alert-warning' :
-                      'alert-danger'
-                    }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {sale.status}
-                    </span>
-                  </td>
-                  <td>{new Date(sale.sale_date).toLocaleDateString()}</td>
-                  <td>
-                    <button 
-                      className="btn btn-small btn-primary"
-                      onClick={() => openSaleModal(sale)}
-                    >
-                      Ver
-                    </button>
-                    {sale.status === 'COMPLETED' && (
-                      <button 
-                        className="btn btn-small btn-danger"
-                        onClick={() => cancelSale(sale)}
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </td>
+        {sales.length > 0 ? (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Número</th>
+                  <th>Cliente</th>
+                  <th>Total</th>
+                  <th>Método Pago</th>
+                  <th>Estado</th>
+                  <th>Fecha</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {sales.map(sale => (
+                  <tr key={sale.id}>
+                    <td>{safeString(sale.sale_number)}</td>
+                    <td>{safeString(sale.customer_name, 'Cliente General')}</td>
+                    <td>{formatCurrency(safeValue(sale.total, 0))}</td>
+                    <td>{safeString(sale.payment_method)}</td>
+                    <td>
+                      <span className={`alert ${
+                        sale.status === 'COMPLETED' ? 'alert-success' :
+                        sale.status === 'PENDING' ? 'alert-warning' :
+                        'alert-danger'
+                      }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                        {safeString(sale.status)}
+                      </span>
+                    </td>
+                    <td>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
+                    <td>
+                      <button 
+                        className="btn btn-small btn-primary"
+                        onClick={() => openSaleModal(sale)}
+                      >
+                        Ver
+                      </button>
+                      {sale.status === 'COMPLETED' && (
+                        <button 
+                          className="btn btn-small btn-danger"
+                          onClick={() => cancelSale(sale)}
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="alert alert-info">
+            No se encontraron ventas con los filtros aplicados
+          </div>
+        )}
       </div>
 
       {/* Modal Nueva Venta */}
@@ -386,7 +474,7 @@ const Sales = () => {
               <div className="card">
                 <h4>Agregar Productos</h4>
                 <div className="form-row">
-                  <div className="form-group" style={{ flex: 2 }}>
+                  <div className="form-group" style={{ flex: 2, position: 'relative' }}>
                     <label>Buscar Producto</label>
                     <input
                       type="text"
@@ -403,16 +491,19 @@ const Sales = () => {
                         backgroundColor: 'white',
                         position: 'absolute',
                         zIndex: 1000,
-                        width: '100%'
+                        width: '100%',
+                        borderRadius: '4px',
+                        marginTop: '2px'
                       }}>
                         {filteredProducts.slice(0, 10).map(product => (
                           <div
                             key={product.id}
                             style={{ 
-                              padding: '0.5rem', 
+                              padding: '0.75rem', 
                               cursor: 'pointer',
                               borderBottom: '1px solid #eee'
                             }}
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
                               setSelectedProduct(product);
                               setSearchProduct(product.name);
@@ -441,6 +532,7 @@ const Sales = () => {
                       type="button" 
                       className="btn btn-success form-control"
                       onClick={addItemToSale}
+                      disabled={!selectedProduct}
                     >
                       Agregar
                     </button>
@@ -458,36 +550,54 @@ const Sales = () => {
                         <th>Producto</th>
                         <th>Cantidad</th>
                         <th>Precio Unit.</th>
+                        <th>Desc. %</th>
                         <th>Subtotal</th>
                         <th>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {newSale.items.map((item, index) => (
-                        <tr key={index}>
-                          <td>{item.product_name}</td>
-                          <td>
-                            <input
-                              type="number"
-                              min="1"
-                              value={item.quantity}
-                              onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
-                              style={{ width: '80px' }}
-                            />
-                          </td>
-                          <td>{formatCurrency(item.unit_price)}</td>
-                          <td>{formatCurrency(item.quantity * item.unit_price)}</td>
-                          <td>
-                            <button 
-                              type="button"
-                              className="btn btn-small btn-danger"
-                              onClick={() => removeItemFromSale(index)}
-                            >
-                              Eliminar
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {newSale.items.map((item, index) => {
+                        const itemSubtotal = item.quantity * item.unit_price;
+                        const itemDiscount = itemSubtotal * (item.discount_percentage / 100);
+                        const itemTotal = itemSubtotal - itemDiscount;
+                        
+                        return (
+                          <tr key={index}>
+                            <td>{item.product_name}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) => updateItemQuantity(index, parseInt(e.target.value) || 1)}
+                                style={{ width: '80px' }}
+                              />
+                            </td>
+                            <td>{formatCurrency(item.unit_price)}</td>
+                            <td>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={item.discount_percentage}
+                                onChange={(e) => updateItemDiscount(index, parseFloat(e.target.value) || 0)}
+                                style={{ width: '60px' }}
+                              />
+                            </td>
+                            <td>{formatCurrency(itemTotal)}</td>
+                            <td>
+                              <button 
+                                type="button"
+                                className="btn btn-small btn-danger"
+                                onClick={() => removeItemFromSale(index)}
+                              >
+                                Eliminar
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (
@@ -516,7 +626,7 @@ const Sales = () => {
                 <button type="button" className="btn btn-secondary" onClick={() => setShowNewSaleModal(false)}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn-primary">
+                <button type="submit" className="btn btn-primary" disabled={newSale.items.length === 0}>
                   Crear Venta
                 </button>
               </div>
@@ -536,16 +646,16 @@ const Sales = () => {
             
             <div className="grid grid-2">
               <div>
-                <p><strong>Cliente:</strong> {selectedSale.customer_name || 'Cliente General'}</p>
-                <p><strong>Vendedor:</strong> {selectedSale.seller_name}</p>
-                <p><strong>Método de Pago:</strong> {selectedSale.payment_method}</p>
-                <p><strong>Estado:</strong> {selectedSale.status}</p>
+                <p><strong>Cliente:</strong> {safeString(selectedSale.customer_name, 'Cliente General')}</p>
+                <p><strong>Vendedor:</strong> {safeString(selectedSale.seller_name)}</p>
+                <p><strong>Método de Pago:</strong> {safeString(selectedSale.payment_method)}</p>
+                <p><strong>Estado:</strong> {safeString(selectedSale.status)}</p>
               </div>
               <div>
-                <p><strong>Fecha:</strong> {new Date(selectedSale.sale_date).toLocaleDateString()}</p>
-                <p><strong>Subtotal:</strong> {formatCurrency(selectedSale.subtotal)}</p>
-                <p><strong>Descuento:</strong> {selectedSale.discount_percentage}% ({formatCurrency(selectedSale.discount_amount)})</p>
-                <p><strong>Total:</strong> {formatCurrency(selectedSale.total)}</p>
+                <p><strong>Fecha:</strong> {selectedSale.sale_date ? new Date(selectedSale.sale_date).toLocaleDateString() : 'N/A'}</p>
+                <p><strong>Subtotal:</strong> {formatCurrency(safeValue(selectedSale.subtotal, 0))}</p>
+                <p><strong>Descuento:</strong> {safeValue(selectedSale.discount_percentage, 0)}% ({formatCurrency(safeValue(selectedSale.discount_amount, 0))})</p>
+                <p><strong>Total:</strong> {formatCurrency(safeValue(selectedSale.total, 0))}</p>
               </div>
             </div>
 
@@ -558,16 +668,18 @@ const Sales = () => {
                       <th>Producto</th>
                       <th>Cantidad</th>
                       <th>Precio Unit.</th>
+                      <th>Descuento</th>
                       <th>Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {selectedSale.items.map((item, index) => (
                       <tr key={index}>
-                        <td>{item.product_name}</td>
-                        <td>{item.quantity}</td>
-                        <td>{formatCurrency(item.unit_price)}</td>
-                        <td>{formatCurrency(item.total_price)}</td>
+                        <td>{safeString(item.product_name)}</td>
+                        <td>{safeValue(item.quantity, 0)}</td>
+                        <td>{formatCurrency(safeValue(item.unit_price, 0))}</td>
+                        <td>{safeValue(item.discount_percentage, 0)}%</td>
+                        <td>{formatCurrency(safeValue(item.total_price, 0))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -581,6 +693,23 @@ const Sales = () => {
                 <p>{selectedSale.notes}</p>
               </div>
             )}
+
+            <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+              <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                Cerrar
+              </button>
+              {selectedSale.status === 'COMPLETED' && (
+                <button 
+                  className="btn btn-danger" 
+                  onClick={() => {
+                    setShowModal(false);
+                    cancelSale(selectedSale);
+                  }}
+                >
+                  Cancelar Venta
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -1,6 +1,5 @@
-// pages/Suppliers.js
-import React, { useState, useEffect } from 'react';
-import { suppliersAPI, showAlert } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { suppliersAPI, showAlert, handleApiError, safeString } from '../services/api';
 
 const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -21,22 +20,24 @@ const Suppliers = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadSuppliers();
-  }, [filters]);
-
-  const loadSuppliers = async () => {
+  const loadSuppliers = useCallback(async () => {
     try {
       setLoading(true);
       const response = await suppliersAPI.getSuppliers(filters);
-      setSuppliers(response.data.results || response.data);
+      const suppliersData = response.data;
+      setSuppliers(suppliersData.results || suppliersData || []);
     } catch (error) {
       console.error('Error cargando proveedores:', error);
-      showAlert('Error cargando proveedores', 'danger');
+      handleApiError(error, 'Error cargando proveedores');
+      setSuppliers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, [loadSuppliers]);
 
   const resetForm = () => {
     setSupplierForm({
@@ -53,12 +54,12 @@ const Suppliers = () => {
   const openModal = (supplier = null) => {
     if (supplier) {
       setSupplierForm({
-        name: supplier.name,
-        ruc: supplier.ruc,
+        name: supplier.name || '',
+        ruc: supplier.ruc || '',
         phone: supplier.phone || '',
         email: supplier.email || '',
         address: supplier.address || '',
-        is_active: supplier.is_active
+        is_active: supplier.is_active !== undefined ? supplier.is_active : true
       });
       setEditingSupplier(supplier);
     } else {
@@ -75,6 +76,24 @@ const Suppliers = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Validaciones
+      if (!supplierForm.name.trim()) {
+        showAlert('El nombre del proveedor es obligatorio', 'warning');
+        return;
+      }
+      if (!supplierForm.ruc.trim()) {
+        showAlert('El RUC es obligatorio', 'warning');
+        return;
+      }
+      if (supplierForm.ruc.length !== 11) {
+        showAlert('El RUC debe tener 11 dígitos', 'warning');
+        return;
+      }
+      if (!/^\d+$/.test(supplierForm.ruc)) {
+        showAlert('El RUC debe contener solo números', 'warning');
+        return;
+      }
+
       if (editingSupplier) {
         await suppliersAPI.updateSupplier(editingSupplier.id, supplierForm);
         showAlert('Proveedor actualizado exitosamente', 'success');
@@ -86,7 +105,7 @@ const Suppliers = () => {
       loadSuppliers();
     } catch (error) {
       console.error('Error guardando proveedor:', error);
-      showAlert('Error guardando proveedor', 'danger');
+      handleApiError(error, 'Error guardando proveedor');
     }
   };
 
@@ -98,8 +117,24 @@ const Suppliers = () => {
         loadSuppliers();
       } catch (error) {
         console.error('Error eliminando proveedor:', error);
-        showAlert('Error eliminando proveedor', 'danger');
+        handleApiError(error, 'Error eliminando proveedor');
       }
+    }
+  };
+
+  const viewProducts = async (supplier) => {
+    try {
+      const response = await suppliersAPI.getSupplierProducts(supplier.id);
+      const products = response.data.products || [];
+      
+      if (products.length > 0) {
+        window.location.href = `/products?supplier=${supplier.id}`;
+      } else {
+        showAlert('Este proveedor no tiene productos asignados', 'info');
+      }
+    } catch (error) {
+      console.error('Error obteniendo productos:', error);
+      handleApiError(error, 'Error obteniendo productos del proveedor');
     }
   };
 
@@ -153,52 +188,65 @@ const Suppliers = () => {
       {/* Tabla de proveedores */}
       <div className="card">
         <h3>Proveedores ({suppliers.length})</h3>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>RUC</th>
-                <th>Teléfono</th>
-                <th>Email</th>
-                <th>Productos</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {suppliers.map(supplier => (
-                <tr key={supplier.id}>
-                  <td>{supplier.name}</td>
-                  <td>{supplier.ruc}</td>
-                  <td>{supplier.phone || 'N/A'}</td>
-                  <td>{supplier.email || 'N/A'}</td>
-                  <td>{supplier.product_count || 0}</td>
-                  <td>
-                    <span className={`alert ${supplier.is_active ? 'alert-success' : 'alert-danger'}`}
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {supplier.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td>
-                    <button 
-                      className="btn btn-small btn-primary"
-                      onClick={() => openModal(supplier)}
-                    >
-                      Editar
-                    </button>
-                    <button 
-                      className="btn btn-small btn-danger"
-                      onClick={() => handleDelete(supplier)}
-                    >
-                      Eliminar
-                    </button>
-                  </td>
+        {suppliers.length > 0 ? (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>RUC</th>
+                  <th>Teléfono</th>
+                  <th>Email</th>
+                  <th>Productos</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {suppliers.map(supplier => (
+                  <tr key={supplier.id}>
+                    <td>{safeString(supplier.name)}</td>
+                    <td>{safeString(supplier.ruc)}</td>
+                    <td>{safeString(supplier.phone, 'N/A')}</td>
+                    <td>{safeString(supplier.email, 'N/A')}</td>
+                    <td>{supplier.product_count || 0}</td>
+                    <td>
+                      <span className={`alert ${supplier.is_active ? 'alert-success' : 'alert-danger'}`}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                        {supplier.is_active ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td>
+                      <button 
+                        className="btn btn-small btn-primary"
+                        onClick={() => openModal(supplier)}
+                      >
+                        Editar
+                      </button>
+                      <button 
+                        className="btn btn-small btn-info"
+                        onClick={() => viewProducts(supplier)}
+                        style={{ backgroundColor: '#17a2b8', color: 'white' }}
+                      >
+                        Ver Productos
+                      </button>
+                      <button 
+                        className="btn btn-small btn-danger"
+                        onClick={() => handleDelete(supplier)}
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="alert alert-info">
+            No se encontraron proveedores con los filtros aplicados
+          </div>
+        )}
       </div>
 
       {/* Modal de proveedor */}

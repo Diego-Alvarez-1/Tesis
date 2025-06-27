@@ -2,8 +2,8 @@ import axios from 'axios';
 
 // Configuración base de axios
 const api = axios.create({
-  baseURL: '/api',
-  timeout: 10000,
+  baseURL: 'http://localhost:8000/api', // URL del backend Django
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   }
@@ -12,14 +12,15 @@ const api = axios.create({
 // Interceptor para requests
 api.interceptors.request.use(
   (config) => {
-    // Agregar token si existe
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log('API Request:', config.method?.toUpperCase(), config.url);
     return config;
   },
   (error) => {
+    console.error('Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -27,150 +28,290 @@ api.interceptors.request.use(
 // Interceptor para responses
 api.interceptors.response.use(
   (response) => {
+    console.log('API Response:', response.config.url, response.status);
     return response;
   },
   (error) => {
+    console.error('API Error:', error.response?.status, error.response?.data || error.message);
+    
     if (error.response?.status === 401) {
-      // Logout user
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      console.log('Unauthorized access - token removed');
     }
+    
     return Promise.reject(error);
   }
 );
 
-// Servicios de API
+// ===== SERVICIOS DE API (BASADOS EN EL BACKEND REAL) =====
 
-// Productos
+// PRODUCTOS - Basado en apps/products/urls.py y views.py
 export const productsAPI = {
+  // GET /api/products/products/
   getProducts: (params = {}) => api.get('/products/products/', { params }),
+  
+  // GET /api/products/products/{id}/
   getProduct: (id) => api.get(`/products/products/${id}/`),
+  
+  // POST /api/products/products/
   createProduct: (data) => api.post('/products/products/', data),
+  
+  // PUT /api/products/products/{id}/
   updateProduct: (id, data) => api.put(`/products/products/${id}/`, data),
+  
+  // DELETE /api/products/products/{id}/
   deleteProduct: (id) => api.delete(`/products/products/${id}/`),
+  
+  // GET /api/products/products/low_stock/
   getLowStock: () => api.get('/products/products/low_stock/'),
+  
+  // GET /api/products/products/dashboard_stats/
   getDashboardStats: () => api.get('/products/products/dashboard_stats/'),
+  
+  // POST /api/products/products/{id}/update_stock/
   updateStock: (id, data) => api.post(`/products/products/${id}/update_stock/`, data),
+  
+  // GET /api/products/products/{id}/sales_history/
   getSalesHistory: (id, params = {}) => api.get(`/products/products/${id}/sales_history/`, { params }),
+  
+  // GET /api/products/products/by_category/
+  getByCategory: () => api.get('/products/products/by_category/'),
 };
 
-// Categorías
+// CATEGORÍAS - Basado en apps/products/urls.py
 export const categoriesAPI = {
+  // GET /api/products/categories/
   getCategories: (params = {}) => api.get('/products/categories/', { params }),
+  
+  // GET /api/products/categories/{id}/
   getCategory: (id) => api.get(`/products/categories/${id}/`),
+  
+  // POST /api/products/categories/
   createCategory: (data) => api.post('/products/categories/', data),
+  
+  // PUT /api/products/categories/{id}/
   updateCategory: (id, data) => api.put(`/products/categories/${id}/`, data),
+  
+  // DELETE /api/products/categories/{id}/
   deleteCategory: (id) => api.delete(`/products/categories/${id}/`),
+  
+  // GET /api/products/categories/{id}/products/
   getCategoryProducts: (id) => api.get(`/products/categories/${id}/products/`),
 };
 
-// Proveedores
+// PROVEEDORES - Basado en apps/products/urls.py
 export const suppliersAPI = {
+  // GET /api/products/suppliers/
   getSuppliers: (params = {}) => api.get('/products/suppliers/', { params }),
+  
+  // GET /api/products/suppliers/{id}/
   getSupplier: (id) => api.get(`/products/suppliers/${id}/`),
+  
+  // POST /api/products/suppliers/
   createSupplier: (data) => api.post('/products/suppliers/', data),
+  
+  // PUT /api/products/suppliers/{id}/
   updateSupplier: (id, data) => api.put(`/products/suppliers/${id}/`, data),
+  
+  // DELETE /api/products/suppliers/{id}/
   deleteSupplier: (id) => api.delete(`/products/suppliers/${id}/`),
+  
+  // GET /api/products/suppliers/{id}/products/
   getSupplierProducts: (id) => api.get(`/products/suppliers/${id}/products/`),
 };
 
-// Inventario
+// INVENTARIO - Basado en apps/inventory/urls.py y views.py
 export const inventoryAPI = {
+  // GET /api/inventory/stock-movements/
   getStockMovements: (params = {}) => api.get('/inventory/stock-movements/', { params }),
+  
+  // GET /api/inventory/stock-movements/{id}/
   getStockMovement: (id) => api.get(`/inventory/stock-movements/${id}/`),
+  
+  // GET /api/inventory/stock-movements/summary/
   getMovementsSummary: (params = {}) => api.get('/inventory/stock-movements/summary/', { params }),
   
+  // GET /api/inventory/purchase-orders/
   getPurchaseOrders: (params = {}) => api.get('/inventory/purchase-orders/', { params }),
+  
+  // POST /api/inventory/purchase-orders/
   createPurchaseOrder: (data) => api.post('/inventory/purchase-orders/', data),
+  
+  // GET /api/inventory/purchase-orders/{id}/
   getPurchaseOrder: (id) => api.get(`/inventory/purchase-orders/${id}/`),
+  
+  // POST /api/inventory/purchase-orders/{id}/approve/
   approvePurchaseOrder: (id) => api.post(`/inventory/purchase-orders/${id}/approve/`),
+  
+  // POST /api/inventory/purchase-orders/{id}/receive/
   receivePurchaseOrder: (id, data) => api.post(`/inventory/purchase-orders/${id}/receive/`, data),
   
+  // GET /api/inventory/inventory-counts/
   getInventoryCounts: (params = {}) => api.get('/inventory/inventory-counts/', { params }),
+  
+  // POST /api/inventory/inventory-counts/
   createInventoryCount: (data) => api.post('/inventory/inventory-counts/', data),
+  
+  // POST /api/inventory/inventory-counts/{id}/start_count/
   startInventoryCount: (id) => api.post(`/inventory/inventory-counts/${id}/start_count/`),
+  
+  // POST /api/inventory/inventory-counts/{id}/complete_count/
   completeInventoryCount: (id) => api.post(`/inventory/inventory-counts/${id}/complete_count/`),
   
+  // GET /api/inventory/reports/low_stock/
   getLowStockReport: () => api.get('/inventory/reports/low_stock/'),
+  
+  // POST /api/inventory/reports/bulk_adjust_stock/
   bulkAdjustStock: (data) => api.post('/inventory/reports/bulk_adjust_stock/', data),
 };
 
-// Ventas
+// VENTAS - Basado en apps/sales/urls.py y views.py
 export const salesAPI = {
+  // GET /api/sales/sales/
   getSales: (params = {}) => api.get('/sales/sales/', { params }),
+  
+  // GET /api/sales/sales/{id}/
   getSale: (id) => api.get(`/sales/sales/${id}/`),
+  
+  // POST /api/sales/sales/
   createSale: (data) => api.post('/sales/sales/', data),
+  
+  // POST /api/sales/sales/{id}/cancel/
   cancelSale: (id) => api.post(`/sales/sales/${id}/cancel/`),
+  
+  // GET /api/sales/sales/dashboard_stats/
   getDashboardStats: () => api.get('/sales/sales/dashboard_stats/'),
+  
+  // GET /api/sales/sales/sales_by_period/
   getSalesByPeriod: (params = {}) => api.get('/sales/sales/sales_by_period/', { params }),
 };
 
-// Clientes
+// CLIENTES - Basado en apps/sales/urls.py y views.py
 export const customersAPI = {
+  // GET /api/sales/customers/
   getCustomers: (params = {}) => api.get('/sales/customers/', { params }),
+  
+  // GET /api/sales/customers/{id}/
   getCustomer: (id) => api.get(`/sales/customers/${id}/`),
+  
+  // POST /api/sales/customers/
   createCustomer: (data) => api.post('/sales/customers/', data),
+  
+  // PUT /api/sales/customers/{id}/
   updateCustomer: (id, data) => api.put(`/sales/customers/${id}/`, data),
+  
+  // DELETE /api/sales/customers/{id}/
   deleteCustomer: (id) => api.delete(`/sales/customers/${id}/`),
+  
+  // GET /api/sales/customers/{id}/sales_history/
   getCustomerSalesHistory: (id, params = {}) => api.get(`/sales/customers/${id}/sales_history/`, { params }),
+  
+  // GET /api/sales/customers/top_customers/
   getTopCustomers: (params = {}) => api.get('/sales/customers/top_customers/', { params }),
 };
 
-// Resúmenes diarios
+// RESÚMENES DIARIOS - Basado en apps/sales/urls.py y views.py
 export const dailySummaryAPI = {
+  // GET /api/sales/daily-summaries/
   getDailySummaries: (params = {}) => api.get('/sales/daily-summaries/', { params }),
+  
+  // GET /api/sales/daily-summaries/trends/
   getTrends: (params = {}) => api.get('/sales/daily-summaries/trends/', { params }),
 };
 
-// Machine Learning
+// MACHINE LEARNING - Basado en apps/ml_models/urls.py y views.py
 export const mlAPI = {
+  // GET /api/ml/models/
   getModels: () => api.get('/ml/models/'),
+  
+  // POST /api/ml/models/train_new_model/
   trainNewModel: (data) => api.post('/ml/models/train_new_model/', data),
+  
+  // POST /api/ml/models/{id}/set_as_default/
   setDefaultModel: (id) => api.post(`/ml/models/${id}/set_as_default/`),
   
+  // GET /api/ml/predictions/
   getPredictionRequests: (params = {}) => api.get('/ml/predictions/', { params }),
+  
+  // POST /api/ml/predictions/predict_demand/
   predictDemand: (data) => api.post('/ml/predictions/predict_demand/', data),
+  
+  // POST /api/ml/predictions/batch_predict/
   batchPredict: (data) => api.post('/ml/predictions/batch_predict/', data),
   
+  // GET /api/ml/demand-predictions/
   getDemandPredictions: (params = {}) => api.get('/ml/demand-predictions/', { params }),
+  
+  // GET /api/ml/demand-predictions/by_product/
   getPredictionsByProduct: (params = {}) => api.get('/ml/demand-predictions/by_product/', { params }),
   
+  // GET /api/ml/reorder-recommendations/
   getReorderRecommendations: (params = {}) => api.get('/ml/reorder-recommendations/', { params }),
+  
+  // GET /api/ml/reorder-recommendations/{id}/
   getProductRecommendation: (id, params = {}) => api.get(`/ml/reorder-recommendations/${id}/`, { params }),
 };
 
-// Analytics
+// ANALYTICS - Basado en apps/analytics/urls.py y views.py
 export const analyticsAPI = {
+  // POST /api/analytics/run_analysis/
   runAnalysis: () => api.post('/analytics/run_analysis/'),
+  
+  // GET /api/analytics/dashboard_overview/
   getDashboardOverview: () => api.get('/analytics/dashboard_overview/'),
+  
+  // GET /api/analytics/test/
+  testAnalytics: () => api.get('/analytics/test/'),
 };
 
-// Utilidades
+// ===== FUNCIONES UTILITARIAS =====
+
+// Formatear moneda en soles peruanos
 export const formatCurrency = (amount) => {
+  if (amount === null || amount === undefined || isNaN(amount)) {
+    return 'S/. 0.00';
+  }
   return new Intl.NumberFormat('es-PE', {
     style: 'currency',
     currency: 'PEN',
-  }).format(amount);
+  }).format(Number(amount));
 };
 
+// Formatear fecha
 export const formatDate = (date) => {
+  if (!date) return 'N/A';
   return new Date(date).toLocaleDateString('es-PE');
 };
 
+// Formatear fecha y hora
 export const formatDateTime = (datetime) => {
+  if (!datetime) return 'N/A';
   return new Date(datetime).toLocaleString('es-PE');
 };
 
+// Función para mostrar alertas
 export const showAlert = (message, type = 'info') => {
-  // Función simple para mostrar alertas
   const alertDiv = document.createElement('div');
   alertDiv.className = `alert alert-${type}`;
   alertDiv.textContent = message;
-  alertDiv.style.position = 'fixed';
-  alertDiv.style.top = '20px';
-  alertDiv.style.right = '20px';
-  alertDiv.style.zIndex = '9999';
-  alertDiv.style.minWidth = '300px';
+  alertDiv.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 300px;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: white;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    background-color: ${
+      type === 'success' ? '#10b981' :
+      type === 'danger' ? '#ef4444' :
+      type === 'warning' ? '#f59e0b' :
+      '#3b82f6'
+    };
+  `;
   
   document.body.appendChild(alertDiv);
   
@@ -179,6 +320,31 @@ export const showAlert = (message, type = 'info') => {
       alertDiv.parentNode.removeChild(alertDiv);
     }
   }, 5000);
+};
+
+// Función helper para manejar errores de API
+export const handleApiError = (error, defaultMessage = 'Error en la operación') => {
+  console.error('API Error:', error);
+  
+  if (error.response?.data?.detail) {
+    showAlert(error.response.data.detail, 'danger');
+  } else if (error.response?.data?.error) {
+    showAlert(error.response.data.error, 'danger');
+  } else if (error.message) {
+    showAlert(error.message, 'danger');
+  } else {
+    showAlert(defaultMessage, 'danger');
+  }
+};
+
+// Función helper para manejar valores seguros
+export const safeValue = (value, defaultValue = 0) => {
+  return value !== null && value !== undefined && !isNaN(value) ? value : defaultValue;
+};
+
+// Función helper para manejar strings seguros
+export const safeString = (value, defaultValue = 'N/A') => {
+  return value && value.toString().trim() ? value.toString() : defaultValue;
 };
 
 export default api;

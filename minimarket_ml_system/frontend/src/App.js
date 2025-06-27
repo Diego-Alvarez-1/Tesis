@@ -14,6 +14,9 @@ import Predictions from './pages/Predictions';
 import Analytics from './pages/Analytics';
 import Reports from './pages/Reports';
 
+// Componente para manejar errores
+import ErrorBoundary from './components/ErrorBoundary';
+
 function App() {
   return (
     <Router>
@@ -52,18 +55,20 @@ function App() {
         </nav>
 
         <main className="main-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/categories" element={<Categories />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/predictions" element={<Predictions />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/reports" element={<Reports />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/products" element={<Products />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/suppliers" element={<Suppliers />} />
+              <Route path="/inventory" element={<Inventory />} />
+              <Route path="/sales" element={<Sales />} />
+              <Route path="/customers" element={<Customers />} />
+              <Route path="/predictions" element={<Predictions />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/reports" element={<Reports />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </Router>

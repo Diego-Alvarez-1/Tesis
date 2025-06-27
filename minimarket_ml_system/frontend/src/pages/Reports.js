@@ -29,28 +29,53 @@ const Reports = () => {
       
       switch (activeReport) {
         case 'low-stock':
-          const lowStockRes = await inventoryAPI.getLowStockReport();
-          setReportData(lowStockRes.data);
+          try {
+            const lowStockRes = await inventoryAPI.getLowStockReport();
+            setReportData(lowStockRes.data);
+          } catch (error) {
+            console.error('Error loading low stock report:', error);
+            setReportData({ products: [], products_count: 0 });
+          }
           break;
           
         case 'sales-summary':
-          const salesRes = await dailySummaryAPI.getTrends({ days: 30 });
-          setReportData(salesRes.data);
+          try {
+            const salesRes = await dailySummaryAPI.getTrends({ days: 30 });
+            setReportData(salesRes.data);
+          } catch (error) {
+            console.error('Error loading sales summary:', error);
+            setReportData({ summary: {}, daily_data: [] });
+          }
           break;
           
         case 'inventory-status':
-          const productsRes = await productsAPI.getDashboardStats();
-          setReportData(productsRes.data);
+          try {
+            const productsRes = await productsAPI.getDashboardStats();
+            setReportData(productsRes.data);
+          } catch (error) {
+            console.error('Error loading inventory status:', error);
+            setReportData({ total_products: 0, categories_stats: [] });
+          }
           break;
           
         case 'sales-by-period':
-          const salesPeriodRes = await salesAPI.getSalesByPeriod({ period: 'daily', days: 30 });
-          setReportData(salesPeriodRes.data);
+          try {
+            const salesPeriodRes = await salesAPI.getSalesByPeriod({ period: 'daily', days: 30 });
+            setReportData(salesPeriodRes.data);
+          } catch (error) {
+            console.error('Error loading sales by period:', error);
+            setReportData({ data: [], period: 'daily', days: 30 });
+          }
           break;
           
         case 'top-products':
-          const topProductsRes = await salesAPI.getDashboardStats();
-          setReportData(topProductsRes.data);
+          try {
+            const topProductsRes = await salesAPI.getDashboardStats();
+            setReportData(topProductsRes.data);
+          } catch (error) {
+            console.error('Error loading top products:', error);
+            setReportData({ payment_methods: [] });
+          }
           break;
           
         default:
@@ -59,6 +84,7 @@ const Reports = () => {
     } catch (error) {
       console.error('Error cargando reporte:', error);
       showAlert('Error cargando reporte', 'danger');
+      setReportData(null);
     } finally {
       setLoading(false);
     }
@@ -74,6 +100,19 @@ const Reports = () => {
 
   const printReport = () => {
     window.print();
+  };
+
+  // Función helper para manejar valores nulos en numbers
+  const safeToFixed = (value, decimals = 2) => {
+    if (value === null || value === undefined || isNaN(value)) {
+      return '0.00';
+    }
+    return Number(value).toFixed(decimals);
+  };
+
+  // Función helper para manejar valores nulos en strings
+  const safeString = (value, defaultValue = 'N/A') => {
+    return value || defaultValue;
   };
 
   if (loading) {
@@ -194,21 +233,21 @@ const Reports = () => {
               <tbody>
                 {reportData.products.map((product, index) => (
                   <tr key={index}>
-                    <td>{product.product_code}</td>
-                    <td>{product.product_name}</td>
-                    <td>{product.category_name}</td>
-                    <td>{product.current_stock}</td>
-                    <td>{product.min_stock}</td>
-                    <td>{product.reorder_point}</td>
-                    <td>{product.days_of_stock ? product.days_of_stock.toFixed(1) : 'N/A'}</td>
-                    <td>{product.suggested_order}</td>
+                    <td>{safeString(product.product_code)}</td>
+                    <td>{safeString(product.product_name)}</td>
+                    <td>{safeString(product.category_name)}</td>
+                    <td>{product.current_stock || 0}</td>
+                    <td>{product.min_stock || 0}</td>
+                    <td>{product.reorder_point || 0}</td>
+                    <td>{safeToFixed(product.days_of_stock, 1)}</td>
+                    <td>{product.suggested_order || 0}</td>
                     <td>
                       <span className={`alert ${
                         product.stock_status === 'SIN_STOCK' ? 'alert-danger' :
                         product.stock_status === 'STOCK_BAJO' ? 'alert-warning' :
                         'alert-success'
                       }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                        {product.stock_status}
+                        {safeString(product.stock_status, 'NORMAL')}
                       </span>
                     </td>
                   </tr>
@@ -231,19 +270,19 @@ const Reports = () => {
           {reportData.summary && (
             <div className="grid grid-4">
               <div className="stats-card">
-                <h3>{formatCurrency(reportData.summary.total_sales)}</h3>
+                <h3>{formatCurrency(reportData.summary.total_sales || 0)}</h3>
                 <p>Ventas Totales</p>
               </div>
               <div className="stats-card success">
-                <h3>{formatCurrency(reportData.summary.total_profit)}</h3>
+                <h3>{formatCurrency(reportData.summary.total_profit || 0)}</h3>
                 <p>Ganancia Total</p>
               </div>
               <div className="stats-card warning">
-                <h3>{formatCurrency(reportData.summary.avg_daily_sales)}</h3>
+                <h3>{formatCurrency(reportData.summary.avg_daily_sales || 0)}</h3>
                 <p>Promedio Diario</p>
               </div>
               <div className="stats-card danger">
-                <h3>{reportData.summary.avg_profit_margin?.toFixed(1)}%</h3>
+                <h3>{safeToFixed(reportData.summary.avg_profit_margin, 1)}%</h3>
                 <p>Margen Promedio</p>
               </div>
             </div>
@@ -254,12 +293,12 @@ const Reports = () => {
               <div>
                 <h3>Mejor Día</h3>
                 <p><strong>Fecha:</strong> {new Date(reportData.best_day.date).toLocaleDateString()}</p>
-                <p><strong>Ventas:</strong> {formatCurrency(reportData.best_day.sales)}</p>
+                <p><strong>Ventas:</strong> {formatCurrency(reportData.best_day.sales || 0)}</p>
               </div>
               <div>
                 <h3>Peor Día</h3>
                 <p><strong>Fecha:</strong> {new Date(reportData.worst_day.date).toLocaleDateString()}</p>
-                <p><strong>Ventas:</strong> {formatCurrency(reportData.worst_day.sales)}</p>
+                <p><strong>Ventas:</strong> {formatCurrency(reportData.worst_day.sales || 0)}</p>
               </div>
             </div>
           )}
@@ -281,10 +320,10 @@ const Reports = () => {
                   {reportData.daily_data.slice(-10).map((day, index) => (
                     <tr key={index}>
                       <td>{new Date(day.date).toLocaleDateString()}</td>
-                      <td>{formatCurrency(day.total_sales)}</td>
-                      <td>{day.sale_count}</td>
-                      <td>{day.products_sold}</td>
-                      <td>{day.profit_margin?.toFixed(1)}%</td>
+                      <td>{formatCurrency(day.total_sales || 0)}</td>
+                      <td>{day.sale_count || 0}</td>
+                      <td>{day.products_sold || 0}</td>
+                      <td>{safeToFixed(day.profit_margin, 1)}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -318,7 +357,7 @@ const Reports = () => {
             </div>
           </div>
 
-          {reportData.categories_stats && (
+          {reportData.categories_stats && reportData.categories_stats.length > 0 && (
             <div>
               <h3>Productos por Categoría</h3>
               <table className="table">
@@ -331,11 +370,12 @@ const Reports = () => {
                 </thead>
                 <tbody>
                   {reportData.categories_stats.map((category, index) => {
-                    const percentage = ((category.products_count / reportData.total_products) * 100).toFixed(1);
+                    const percentage = reportData.total_products > 0 ? 
+                      ((category.products_count / reportData.total_products) * 100).toFixed(1) : '0.0';
                     return (
                       <tr key={index}>
-                        <td>{category.category}</td>
-                        <td>{category.products_count}</td>
+                        <td>{safeString(category.category)}</td>
+                        <td>{category.products_count || 0}</td>
                         <td>{percentage}%</td>
                       </tr>
                     );
@@ -365,14 +405,18 @@ const Reports = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {reportData.data.map((period, index) => (
-                    <tr key={index}>
-                      <td>{new Date(period.period).toLocaleDateString()}</td>
-                      <td>{period.sales_count}</td>
-                      <td>{formatCurrency(period.total_amount)}</td>
-                      <td>{period.sales_count > 0 ? formatCurrency(period.total_amount / period.sales_count) : formatCurrency(0)}</td>
-                    </tr>
-                  ))}
+                  {reportData.data.map((period, index) => {
+                    const avgPerSale = period.sales_count > 0 ? 
+                      period.total_amount / period.sales_count : 0;
+                    return (
+                      <tr key={index}>
+                        <td>{new Date(period.period).toLocaleDateString()}</td>
+                        <td>{period.sales_count || 0}</td>
+                        <td>{formatCurrency(period.total_amount || 0)}</td>
+                        <td>{formatCurrency(avgPerSale)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -401,13 +445,13 @@ const Reports = () => {
                 </thead>
                 <tbody>
                   {reportData.payment_methods.map((method, index) => {
-                    const total = reportData.payment_methods.reduce((sum, m) => sum + parseFloat(m.total), 0);
-                    const percentage = ((parseFloat(method.total) / total) * 100).toFixed(1);
+                    const total = reportData.payment_methods.reduce((sum, m) => sum + parseFloat(m.total || 0), 0);
+                    const percentage = total > 0 ? ((parseFloat(method.total || 0) / total) * 100).toFixed(1) : '0.0';
                     return (
                       <tr key={index}>
-                        <td>{method.payment_method}</td>
-                        <td>{method.count}</td>
-                        <td>{formatCurrency(method.total)}</td>
+                        <td>{safeString(method.payment_method)}</td>
+                        <td>{method.count || 0}</td>
+                        <td>{formatCurrency(method.total || 0)}</td>
                         <td>{percentage}%</td>
                       </tr>
                     );

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { categoriesAPI, showAlert } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { categoriesAPI, showAlert, handleApiError, safeString } from '../services/api';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -17,22 +17,24 @@ const Categories = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadCategories();
-  }, [filters]);
-
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     try {
       setLoading(true);
       const response = await categoriesAPI.getCategories(filters);
-      setCategories(response.data.results || response.data);
+      const categoriesData = response.data;
+      setCategories(categoriesData.results || categoriesData || []);
     } catch (error) {
       console.error('Error cargando categorías:', error);
-      showAlert('Error cargando categorías', 'danger');
+      handleApiError(error, 'Error cargando categorías');
+      setCategories([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const resetForm = () => {
     setCategoryForm({
@@ -46,9 +48,9 @@ const Categories = () => {
   const openModal = (category = null) => {
     if (category) {
       setCategoryForm({
-        name: category.name,
+        name: category.name || '',
         description: category.description || '',
-        is_active: category.is_active
+        is_active: category.is_active !== undefined ? category.is_active : true
       });
       setEditingCategory(category);
     } else {
@@ -65,6 +67,11 @@ const Categories = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      if (!categoryForm.name.trim()) {
+        showAlert('El nombre de la categoría es obligatorio', 'warning');
+        return;
+      }
+
       if (editingCategory) {
         await categoriesAPI.updateCategory(editingCategory.id, categoryForm);
         showAlert('Categoría actualizada exitosamente', 'success');
@@ -76,7 +83,7 @@ const Categories = () => {
       loadCategories();
     } catch (error) {
       console.error('Error guardando categoría:', error);
-      showAlert('Error guardando categoría', 'danger');
+      handleApiError(error, 'Error guardando categoría');
     }
   };
 
@@ -88,7 +95,7 @@ const Categories = () => {
         loadCategories();
       } catch (error) {
         console.error('Error eliminando categoría:', error);
-        showAlert('Error eliminando categoría', 'danger');
+        handleApiError(error, 'Error eliminando categoría');
       }
     }
   };
@@ -105,7 +112,7 @@ const Categories = () => {
       }
     } catch (error) {
       console.error('Error obteniendo productos:', error);
-      showAlert('Error obteniendo productos de la categoría', 'danger');
+      handleApiError(error, 'Error obteniendo productos de la categoría');
     }
   };
 
@@ -159,57 +166,63 @@ const Categories = () => {
       {/* Tabla de categorías */}
       <div className="card">
         <h3>Categorías ({categories.length})</h3>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Descripción</th>
-                <th>Productos</th>
-                <th>Estado</th>
-                <th>Fecha Creación</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map(category => (
-                <tr key={category.id}>
-                  <td>{category.name}</td>
-                  <td>{category.description || 'Sin descripción'}</td>
-                  <td>{category.product_count || 0}</td>
-                  <td>
-                    <span className={`alert ${category.is_active ? 'alert-success' : 'alert-danger'}`}
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {category.is_active ? 'Activa' : 'Inactiva'}
-                    </span>
-                  </td>
-                  <td>{new Date(category.created_at).toLocaleDateString()}</td>
-                  <td>
-                    <button 
-                      className="btn btn-small btn-primary"
-                      onClick={() => openModal(category)}
-                    >
-                      Editar
-                    </button>
-                    <button 
-                      className="btn btn-small btn-info"
-                      onClick={() => viewProducts(category)}
-                      style={{ backgroundColor: '#17a2b8', color: 'white' }}
-                    >
-                      Ver Productos
-                    </button>
-                    <button 
-                      className="btn btn-small btn-danger"
-                      onClick={() => handleDelete(category)}
-                    >
-                      Eliminar
-                    </button>
-                  </td>
+        {categories.length > 0 ? (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Descripción</th>
+                  <th>Productos</th>
+                  <th>Estado</th>
+                  <th>Fecha Creación</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {categories.map(category => (
+                  <tr key={category.id}>
+                    <td>{safeString(category.name)}</td>
+                    <td>{safeString(category.description, 'Sin descripción')}</td>
+                    <td>{category.product_count || 0}</td>
+                    <td>
+                      <span className={`alert ${category.is_active ? 'alert-success' : 'alert-danger'}`}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                        {category.is_active ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </td>
+                    <td>{category.created_at ? new Date(category.created_at).toLocaleDateString() : 'N/A'}</td>
+                    <td>
+                      <button 
+                        className="btn btn-small btn-primary"
+                        onClick={() => openModal(category)}
+                      >
+                        Editar
+                      </button>
+                      <button 
+                        className="btn btn-small btn-info"
+                        onClick={() => viewProducts(category)}
+                        style={{ backgroundColor: '#17a2b8', color: 'white' }}
+                      >
+                        Ver Productos
+                      </button>
+                      <button 
+                        className="btn btn-small btn-danger"
+                        onClick={() => handleDelete(category)}
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="alert alert-info">
+            No se encontraron categorías con los filtros aplicados
+          </div>
+        )}
       </div>
 
       {/* Modal de categoría */}

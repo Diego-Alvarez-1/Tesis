@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { customersAPI, formatCurrency, showAlert } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { customersAPI, formatCurrency, showAlert, handleApiError, safeString } from '../services/api';
 
 const Customers = () => {
   const [customers, setCustomers] = useState([]);
@@ -31,22 +31,33 @@ const Customers = () => {
     is_active: true
   });
 
-  useEffect(() => {
-    loadCustomers();
-  }, [filters]);
-
-  const loadCustomers = async () => {
+  const loadCustomers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await customersAPI.getCustomers(filters);
-      setCustomers(response.data.results || response.data);
+      
+      // Filtrar parámetros vacíos antes de enviar al backend
+      const cleanFilters = {};
+      Object.keys(filters).forEach(key => {
+        if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
+          cleanFilters[key] = filters[key];
+        }
+      });
+      
+      const response = await customersAPI.getCustomers(cleanFilters);
+      const customersData = response.data;
+      setCustomers(customersData.results || customersData || []);
     } catch (error) {
       console.error('Error cargando clientes:', error);
-      showAlert('Error cargando clientes', 'danger');
+      handleApiError(error, 'Error cargando clientes');
+      setCustomers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
 
   const resetForm = () => {
     setCustomerForm({
@@ -68,17 +79,17 @@ const Customers = () => {
   const openModal = (customer = null) => {
     if (customer) {
       setCustomerForm({
-        first_name: customer.first_name,
-        last_name: customer.last_name,
-        document_type: customer.document_type,
-        document_number: customer.document_number,
+        first_name: customer.first_name || '',
+        last_name: customer.last_name || '',
+        document_type: customer.document_type || 'DNI',
+        document_number: customer.document_number || '',
         phone: customer.phone || '',
         email: customer.email || '',
         address: customer.address || '',
-        customer_type: customer.customer_type,
-        credit_limit: customer.credit_limit,
+        customer_type: customer.customer_type || 'REGULAR',
+        credit_limit: customer.credit_limit || '',
         birth_date: customer.birth_date || '',
-        is_active: customer.is_active
+        is_active: customer.is_active !== undefined ? customer.is_active : true
       });
       setEditingCustomer(customer);
     } else {
@@ -95,18 +106,48 @@ const Customers = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Validaciones
+      if (!customerForm.first_name.trim()) {
+        showAlert('El nombre es obligatorio', 'warning');
+        return;
+      }
+      if (!customerForm.last_name.trim()) {
+        showAlert('El apellido es obligatorio', 'warning');
+        return;
+      }
+      if (!customerForm.document_number.trim()) {
+        showAlert('El número de documento es obligatorio', 'warning');
+        return;
+      }
+
+      // Validar longitud del documento
+      if (customerForm.document_type === 'DNI' && customerForm.document_number.length !== 8) {
+        showAlert('El DNI debe tener 8 dígitos', 'warning');
+        return;
+      }
+      if (customerForm.document_type === 'RUC' && customerForm.document_number.length !== 11) {
+        showAlert('El RUC debe tener 11 dígitos', 'warning');
+        return;
+      }
+
+      // Preparar datos
+      const formData = {
+        ...customerForm,
+        credit_limit: parseFloat(customerForm.credit_limit) || 0
+      };
+
       if (editingCustomer) {
-        await customersAPI.updateCustomer(editingCustomer.id, customerForm);
+        await customersAPI.updateCustomer(editingCustomer.id, formData);
         showAlert('Cliente actualizado exitosamente', 'success');
       } else {
-        await customersAPI.createCustomer(customerForm);
+        await customersAPI.createCustomer(formData);
         showAlert('Cliente creado exitosamente', 'success');
       }
       closeModal();
       loadCustomers();
     } catch (error) {
       console.error('Error guardando cliente:', error);
-      showAlert('Error guardando cliente', 'danger');
+      handleApiError(error, 'Error guardando cliente');
     }
   };
 
@@ -118,7 +159,7 @@ const Customers = () => {
         loadCustomers();
       } catch (error) {
         console.error('Error eliminando cliente:', error);
-        showAlert('Error eliminando cliente', 'danger');
+        handleApiError(error, 'Error eliminando cliente');
       }
     }
   };
@@ -131,7 +172,7 @@ const Customers = () => {
       setShowHistoryModal(true);
     } catch (error) {
       console.error('Error cargando historial:', error);
-      showAlert('Error cargando historial de ventas', 'danger');
+      handleApiError(error, 'Error cargando historial de ventas');
     }
   };
 
@@ -211,69 +252,75 @@ const Customers = () => {
       {/* Tabla de clientes */}
       <div className="card">
         <h3>Clientes ({customers.length})</h3>
-        <div className="table-container">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nombre</th>
-                <th>Documento</th>
-                <th>Teléfono</th>
-                <th>Tipo</th>
-                <th>Total Compras</th>
-                <th>Crédito Disponible</th>
-                <th>Estado</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map(customer => (
-                <tr key={customer.id}>
-                  <td>{customer.full_name}</td>
-                  <td>{customer.document_type}: {customer.document_number}</td>
-                  <td>{customer.phone || 'N/A'}</td>
-                  <td>
-                    <span className={`alert ${
-                      customer.customer_type === 'VIP' ? 'alert-warning' :
-                      customer.customer_type === 'FREQUENT' ? 'alert-info' :
-                      'alert-secondary'
-                    }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {customer.customer_type}
-                    </span>
-                  </td>
-                  <td>{formatCurrency(customer.total_purchases)}</td>
-                  <td>{formatCurrency(customer.available_credit)}</td>
-                  <td>
-                    <span className={`alert ${customer.is_active ? 'alert-success' : 'alert-danger'}`}
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                      {customer.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
-                  <td>
-                    <button 
-                      className="btn btn-small btn-primary"
-                      onClick={() => openModal(customer)}
-                    >
-                      Editar
-                    </button>
-                    <button 
-                      className="btn btn-small btn-info"
-                      onClick={() => viewSalesHistory(customer)}
-                      style={{ backgroundColor: '#17a2b8', color: 'white' }}
-                    >
-                      Historial
-                    </button>
-                    <button 
-                      className="btn btn-small btn-danger"
-                      onClick={() => handleDelete(customer)}
-                    >
-                      Eliminar
-                    </button>
-                  </td>
+        {customers.length > 0 ? (
+          <div className="table-container">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Nombre</th>
+                  <th>Documento</th>
+                  <th>Teléfono</th>
+                  <th>Tipo</th>
+                  <th>Total Compras</th>
+                  <th>Crédito Disponible</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {customers.map(customer => (
+                  <tr key={customer.id}>
+                    <td>{safeString(customer.full_name)}</td>
+                    <td>{customer.document_type}: {safeString(customer.document_number)}</td>
+                    <td>{safeString(customer.phone, 'N/A')}</td>
+                    <td>
+                      <span className={`alert ${
+                        customer.customer_type === 'VIP' ? 'alert-warning' :
+                        customer.customer_type === 'FREQUENT' ? 'alert-info' :
+                        'alert-secondary'
+                      }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                        {safeString(customer.customer_type)}
+                      </span>
+                    </td>
+                    <td>{formatCurrency(customer.total_purchases || 0)}</td>
+                    <td>{formatCurrency(customer.available_credit || 0)}</td>
+                    <td>
+                      <span className={`alert ${customer.is_active ? 'alert-success' : 'alert-danger'}`}
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                        {customer.is_active ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td>
+                      <button 
+                        className="btn btn-small btn-primary"
+                        onClick={() => openModal(customer)}
+                      >
+                        Editar
+                      </button>
+                      <button 
+                        className="btn btn-small btn-info"
+                        onClick={() => viewSalesHistory(customer)}
+                        style={{ backgroundColor: '#17a2b8', color: 'white' }}
+                      >
+                        Historial
+                      </button>
+                      <button 
+                        className="btn btn-small btn-danger"
+                        onClick={() => handleDelete(customer)}
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="alert alert-info">
+            No se encontraron clientes con los filtros aplicados
+          </div>
+        )}
       </div>
 
       {/* Modal de cliente */}
@@ -408,6 +455,7 @@ const Customers = () => {
                   <input
                     type="number"
                     step="0.01"
+                    min="0"
                     className="form-control"
                     value={customerForm.credit_limit}
                     onChange={(e) => setCustomerForm(prev => ({
@@ -469,15 +517,15 @@ const Customers = () => {
             <div className="grid grid-3">
               <div>
                 <h4>Total Compras</h4>
-                <p><strong>{formatCurrency(selectedCustomer.total_purchases)}</strong></p>
+                <p><strong>{formatCurrency(selectedCustomer.total_purchases || 0)}</strong></p>
               </div>
               <div>
                 <h4>Cantidad Compras</h4>
-                <p><strong>{selectedCustomer.purchase_count}</strong></p>
+                <p><strong>{selectedCustomer.purchase_count || 0}</strong></p>
               </div>
               <div>
                 <h4>Promedio por Compra</h4>
-                <p><strong>{formatCurrency(selectedCustomer.average_purchase)}</strong></p>
+                <p><strong>{formatCurrency(selectedCustomer.average_purchase || 0)}</strong></p>
               </div>
             </div>
 
@@ -497,17 +545,17 @@ const Customers = () => {
                   <tbody>
                     {salesHistory.map(sale => (
                       <tr key={sale.id}>
-                        <td>{sale.sale_number}</td>
-                        <td>{new Date(sale.sale_date).toLocaleDateString()}</td>
-                        <td>{formatCurrency(sale.total)}</td>
-                        <td>{sale.payment_method}</td>
+                        <td>{safeString(sale.sale_number)}</td>
+                        <td>{sale.sale_date ? new Date(sale.sale_date).toLocaleDateString() : 'N/A'}</td>
+                        <td>{formatCurrency(sale.total || 0)}</td>
+                        <td>{safeString(sale.payment_method)}</td>
                         <td>
                           <span className={`alert ${
                             sale.status === 'COMPLETED' ? 'alert-success' :
                             sale.status === 'PENDING' ? 'alert-warning' :
                             'alert-danger'
                           }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                            {sale.status}
+                            {safeString(sale.status)}
                           </span>
                         </td>
                       </tr>
