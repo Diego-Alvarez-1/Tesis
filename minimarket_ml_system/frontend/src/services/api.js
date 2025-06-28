@@ -16,11 +16,20 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    console.log('API Request:', config.method?.toUpperCase(), config.url);
+    
+    // NUEVO: Log mejorado para debug
+    console.log('🚀 API Request:', {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      params: config.params,
+      paramCount: config.params ? Object.keys(config.params).length : 0,
+      hasData: !!config.data
+    });
+    
     return config;
   },
   (error) => {
-    console.error('Request Error:', error);
+    console.error('❌ Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -28,15 +37,27 @@ api.interceptors.request.use(
 // Interceptor para responses
 api.interceptors.response.use(
   (response) => {
-    console.log('API Response:', response.config.url, response.status);
+    console.log('✅ API Response:', {
+      url: response.config.url,
+      status: response.status,
+      dataType: Array.isArray(response.data?.results) ? 'paginated' :
+                Array.isArray(response.data) ? 'array' : 'object',
+      count: Array.isArray(response.data?.results) ? response.data.results.length :
+             Array.isArray(response.data) ? response.data.length : 'N/A'
+    });
     return response;
   },
   (error) => {
-    console.error('API Error:', error.response?.status, error.response?.data || error.message);
+    console.error('❌ API Error:', {
+      url: error.config?.url,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
     
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      console.log('Unauthorized access - token removed');
+      console.log('🔐 Unauthorized - token removed');
     }
     
     return Promise.reject(error);
@@ -48,8 +69,12 @@ api.interceptors.response.use(
 // PRODUCTOS - Basado en apps/products/urls.py y views.py
 export const productsAPI = {
   // GET /api/products/products/
-  getProducts: (params = {}) => api.get('/products/products/', { params }),
-  
+getProducts: (params = {}) => {
+    const cleanedParams = cleanParams(params);
+    console.log('📦 Productos - Parámetros originales:', params);
+    console.log('📦 Productos - Parámetros limpios:', cleanedParams);
+    return api.get('/products/products/', { params: cleanedParams });
+  },  
   // GET /api/products/products/{id}/
   getProduct: (id) => api.get(`/products/products/${id}/`),
   
@@ -81,8 +106,10 @@ export const productsAPI = {
 // CATEGORÍAS - Basado en apps/products/urls.py
 export const categoriesAPI = {
   // GET /api/products/categories/
-  getCategories: (params = {}) => api.get('/products/categories/', { params }),
-  
+getCategories: (params = {}) => {
+    const cleanedParams = cleanParams(params);
+    return api.get('/products/categories/', { params: cleanedParams });
+  },  
   // GET /api/products/categories/{id}/
   getCategory: (id) => api.get(`/products/categories/${id}/`),
   
@@ -102,8 +129,10 @@ export const categoriesAPI = {
 // PROVEEDORES - Basado en apps/products/urls.py
 export const suppliersAPI = {
   // GET /api/products/suppliers/
-  getSuppliers: (params = {}) => api.get('/products/suppliers/', { params }),
-  
+ getSuppliers: (params = {}) => {
+    const cleanedParams = cleanParams(params);
+    return api.get('/products/suppliers/', { params: cleanedParams });
+  },  
   // GET /api/products/suppliers/{id}/
   getSupplier: (id) => api.get(`/products/suppliers/${id}/`),
   
@@ -123,8 +152,11 @@ export const suppliersAPI = {
 // INVENTARIO - Basado en apps/inventory/urls.py y views.py
 export const inventoryAPI = {
   // GET /api/inventory/stock-movements/
-  getStockMovements: (params = {}) => api.get('/inventory/stock-movements/', { params }),
-  
+getStockMovements: (params = {}) => {
+    const cleanedParams = cleanParams(params);
+    console.log('📋 Movimientos - Parámetros limpios:', cleanedParams);
+    return api.get('/inventory/stock-movements/', { params: cleanedParams });
+  },  
   // GET /api/inventory/stock-movements/{id}/
   getStockMovement: (id) => api.get(`/inventory/stock-movements/${id}/`),
   
@@ -167,89 +199,43 @@ export const inventoryAPI = {
 
 // VENTAS - Basado en apps/sales/urls.py y views.py
 export const salesAPI = {
-  // GET /api/sales/sales/
-  getSales: (params = {}) => api.get('/sales/sales/', { params }),
-  
-  // GET /api/sales/sales/{id}/
+  getSales: (params = {}) => api.get('/sales/sales/', { params: cleanParams(params) }),
   getSale: (id) => api.get(`/sales/sales/${id}/`),
-  
-  // POST /api/sales/sales/
   createSale: (data) => api.post('/sales/sales/', data),
-  
-  // POST /api/sales/sales/{id}/cancel/
   cancelSale: (id) => api.post(`/sales/sales/${id}/cancel/`),
-  
-  // GET /api/sales/sales/dashboard_stats/
   getDashboardStats: () => api.get('/sales/sales/dashboard_stats/'),
-  
-  // GET /api/sales/sales/sales_by_period/
-  getSalesByPeriod: (params = {}) => api.get('/sales/sales/sales_by_period/', { params }),
+  getSalesByPeriod: (params = {}) => api.get('/sales/sales/sales_by_period/', { params: cleanParams(params) }),
 };
 
 // CLIENTES - Basado en apps/sales/urls.py y views.py
 export const customersAPI = {
-  // GET /api/sales/customers/
-  getCustomers: (params = {}) => api.get('/sales/customers/', { params }),
-  
-  // GET /api/sales/customers/{id}/
+  getCustomers: (params = {}) => api.get('/sales/customers/', { params: cleanParams(params) }),
   getCustomer: (id) => api.get(`/sales/customers/${id}/`),
-  
-  // POST /api/sales/customers/
   createCustomer: (data) => api.post('/sales/customers/', data),
-  
-  // PUT /api/sales/customers/{id}/
   updateCustomer: (id, data) => api.put(`/sales/customers/${id}/`, data),
-  
-  // DELETE /api/sales/customers/{id}/
   deleteCustomer: (id) => api.delete(`/sales/customers/${id}/`),
-  
-  // GET /api/sales/customers/{id}/sales_history/
-  getCustomerSalesHistory: (id, params = {}) => api.get(`/sales/customers/${id}/sales_history/`, { params }),
-  
-  // GET /api/sales/customers/top_customers/
-  getTopCustomers: (params = {}) => api.get('/sales/customers/top_customers/', { params }),
+  getCustomerSalesHistory: (id, params = {}) => api.get(`/sales/customers/${id}/sales_history/`, { params: cleanParams(params) }),
+  getTopCustomers: (params = {}) => api.get('/sales/customers/top_customers/', { params: cleanParams(params) }),
 };
 
 // RESÚMENES DIARIOS - Basado en apps/sales/urls.py y views.py
 export const dailySummaryAPI = {
-  // GET /api/sales/daily-summaries/
-  getDailySummaries: (params = {}) => api.get('/sales/daily-summaries/', { params }),
-  
-  // GET /api/sales/daily-summaries/trends/
-  getTrends: (params = {}) => api.get('/sales/daily-summaries/trends/', { params }),
+  getDailySummaries: (params = {}) => api.get('/sales/daily-summaries/', { params: cleanParams(params) }),
+  getTrends: (params = {}) => api.get('/sales/daily-summaries/trends/', { params: cleanParams(params) }),
 };
 
 // MACHINE LEARNING - Basado en apps/ml_models/urls.py y views.py
 export const mlAPI = {
-  // GET /api/ml/models/
   getModels: () => api.get('/ml/models/'),
-  
-  // POST /api/ml/models/train_new_model/
   trainNewModel: (data) => api.post('/ml/models/train_new_model/', data),
-  
-  // POST /api/ml/models/{id}/set_as_default/
   setDefaultModel: (id) => api.post(`/ml/models/${id}/set_as_default/`),
-  
-  // GET /api/ml/predictions/
-  getPredictionRequests: (params = {}) => api.get('/ml/predictions/', { params }),
-  
-  // POST /api/ml/predictions/predict_demand/
+  getPredictionRequests: (params = {}) => api.get('/ml/predictions/', { params: cleanParams(params) }),
   predictDemand: (data) => api.post('/ml/predictions/predict_demand/', data),
-  
-  // POST /api/ml/predictions/batch_predict/
   batchPredict: (data) => api.post('/ml/predictions/batch_predict/', data),
-  
-  // GET /api/ml/demand-predictions/
-  getDemandPredictions: (params = {}) => api.get('/ml/demand-predictions/', { params }),
-  
-  // GET /api/ml/demand-predictions/by_product/
-  getPredictionsByProduct: (params = {}) => api.get('/ml/demand-predictions/by_product/', { params }),
-  
-  // GET /api/ml/reorder-recommendations/
-  getReorderRecommendations: (params = {}) => api.get('/ml/reorder-recommendations/', { params }),
-  
-  // GET /api/ml/reorder-recommendations/{id}/
-  getProductRecommendation: (id, params = {}) => api.get(`/ml/reorder-recommendations/${id}/`, { params }),
+  getDemandPredictions: (params = {}) => api.get('/ml/demand-predictions/', { params: cleanParams(params) }),
+  getPredictionsByProduct: (params = {}) => api.get('/ml/demand-predictions/by_product/', { params: cleanParams(params) }),
+  getReorderRecommendations: (params = {}) => api.get('/ml/reorder-recommendations/', { params: cleanParams(params) }),
+  getProductRecommendation: (id, params = {}) => api.get(`/ml/reorder-recommendations/${id}/`, { params: cleanParams(params) }),
 };
 
 // ANALYTICS - Basado en apps/analytics/urls.py y views.py
@@ -546,6 +532,30 @@ export const createAuditInfo = () => {
     user_agent: navigator.userAgent,
     url: window.location.href
   };
+};
+
+export const cleanParams = (params = {}) => {
+  const cleaned = {};
+  
+  Object.keys(params).forEach(key => {
+    const value = params[key];
+    
+    // Solo incluir valores que NO sean:
+    // - null
+    // - undefined  
+    // - string vacío ""
+    // - string solo con espacios "   "
+    if (
+      value !== null && 
+      value !== undefined && 
+      value !== '' && 
+      !(typeof value === 'string' && value.trim() === '')
+    ) {
+      cleaned[key] = value;
+    }
+  });
+  
+  return cleaned;
 };
 
 export default api;

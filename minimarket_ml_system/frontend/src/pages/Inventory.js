@@ -46,130 +46,209 @@ const Inventory = () => {
   // Low Stock Report
   const [lowStockReport, setLowStockReport] = useState([]);
 
+  // CORRECCIÓN: useEffect separados para carga inicial y filtros
   useEffect(() => {
-    loadData();
+    console.log('📦 Inventario: Carga inicial de datos');
+    loadInitialData();
+  }, []);
+
+  useEffect(() => {
+    console.log('🔄 Inventario: Cambio de tab activa:', activeTab);
+    if (products.length > 0 && suppliers.length > 0) {
+      loadTabData();
+    }
   }, [activeTab]);
 
   useEffect(() => {
-    if (activeTab === 'movements') {
+    console.log('🔍 Inventario: Filtros de movimientos cambiaron:', movementFilters);
+    if (activeTab === 'movements' && products.length > 0) {
       loadStockMovements();
     }
   }, [movementFilters]);
 
-  const loadData = async () => {
+  // NUEVA FUNCIÓN: Carga inicial separada
+  const loadInitialData = async () => {
     try {
       setLoading(true);
-      const [productsRes, suppliersRes] = await Promise.all([
-        productsAPI.getProducts({ is_active: true }),
-        suppliersAPI.getSuppliers({ is_active: true })
+      
+      console.log('📦 Cargando productos y proveedores para inventario...');
+      
+      // CORRECCIÓN CRÍTICA: Cargar todos los productos activos sin filtros restrictivos
+      const [productsRes, suppliersRes] = await Promise.allSettled([
+        productsAPI.getProducts({ is_active: true, page_size: 1000 }), // Aumentar límite
+        suppliersAPI.getSuppliers({ is_active: true, page_size: 1000 })
       ]);
       
-      setProducts(productsRes.data.results || productsRes.data);
-      setSuppliers(suppliersRes.data.results || suppliersRes.data);
-
-      if (activeTab === 'movements') {
-        await loadStockMovements();
-      } else if (activeTab === 'purchase-orders') {
-        await loadPurchaseOrders();
-      } else if (activeTab === 'inventory-counts') {
-        await loadInventoryCounts();
-      } else if (activeTab === 'reports') {
-        await loadLowStockReport();
+      // Procesar productos
+      if (productsRes.status === 'fulfilled') {
+        const productsData = productsRes.value.data;
+        const productsList = productsData.results || productsData || [];
+        setProducts(productsList);
+        console.log('✅ Productos cargados para inventario:', productsList.length);
+      } else {
+        console.error('❌ Error cargando productos:', productsRes.reason);
+        setProducts([]);
       }
+
+      // Procesar proveedores
+      if (suppliersRes.status === 'fulfilled') {
+        const suppliersData = suppliersRes.value.data;
+        const suppliersList = suppliersData.results || suppliersData || [];
+        setSuppliers(suppliersList);
+        console.log('✅ Proveedores cargados para inventario:', suppliersList.length);
+      } else {
+        console.error('❌ Error cargando proveedores:', suppliersRes.reason);
+        setSuppliers([]);
+      }
+
+      // Cargar datos de la tab inicial
+      await loadTabData();
+      
     } catch (error) {
-      console.error('Error cargando datos:', error);
-      showAlert('Error cargando datos de inventario', 'danger');
+      console.error('❌ Error en carga inicial de inventario:', error);
+      handleApiError(error, 'Error cargando datos de inventario');
     } finally {
       setLoading(false);
     }
   };
 
+  // NUEVA FUNCIÓN: Cargar datos según la tab activa
+  const loadTabData = async () => {
+    try {
+      console.log(`🔄 Cargando datos para tab: ${activeTab}`);
+      
+      switch (activeTab) {
+        case 'movements':
+          await loadStockMovements();
+          break;
+        case 'purchase-orders':
+          await loadPurchaseOrders();
+          break;
+        case 'inventory-counts':
+          await loadInventoryCounts();
+          break;
+        case 'reports':
+          await loadLowStockReport();
+          break;
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error(`❌ Error cargando datos para tab ${activeTab}:`, error);
+    }
+  };
+
   const loadStockMovements = async () => {
     try {
-      const response = await inventoryAPI.getStockMovements(movementFilters);
-      setStockMovements(response.data.results || response.data);
+      console.log('🔄 Cargando movimientos de stock con filtros:', movementFilters);
+      
+      // Limpiar filtros vacíos
+      const cleanFilters = {};
+      Object.keys(movementFilters).forEach(key => {
+        if (movementFilters[key] !== '' && movementFilters[key] !== null && movementFilters[key] !== undefined) {
+          cleanFilters[key] = movementFilters[key];
+        }
+      });
+      
+      const response = await inventoryAPI.getStockMovements(cleanFilters);
+      const movementsData = response.data;
+      setStockMovements(movementsData.results || movementsData || []);
+      console.log('✅ Movimientos de stock cargados:', (movementsData.results || movementsData || []).length);
     } catch (error) {
-      console.error('Error cargando movimientos:', error);
+      console.error('❌ Error cargando movimientos:', error);
+      setStockMovements([]);
     }
   };
 
   const loadPurchaseOrders = async () => {
     try {
+      console.log('🔄 Cargando órdenes de compra...');
       const response = await inventoryAPI.getPurchaseOrders();
-      setPurchaseOrders(response.data.results || response.data);
+      const ordersData = response.data;
+      setPurchaseOrders(ordersData.results || ordersData || []);
+      console.log('✅ Órdenes de compra cargadas:', (ordersData.results || ordersData || []).length);
     } catch (error) {
-      console.error('Error cargando órdenes de compra:', error);
+      console.error('❌ Error cargando órdenes de compra:', error);
+      setPurchaseOrders([]);
     }
   };
 
   const loadInventoryCounts = async () => {
     try {
+      console.log('🔄 Cargando conteos de inventario...');
       const response = await inventoryAPI.getInventoryCounts();
-      setInventoryCounts(response.data.results || response.data);
+      const countsData = response.data;
+      setInventoryCounts(countsData.results || countsData || []);
+      console.log('✅ Conteos de inventario cargados:', (countsData.results || countsData || []).length);
     } catch (error) {
-      console.error('Error cargando conteos:', error);
+      console.error('❌ Error cargando conteos:', error);
+      setInventoryCounts([]);
     }
   };
 
   const loadLowStockReport = async () => {
     try {
+      console.log('🔄 Cargando reporte de stock bajo...');
       const response = await inventoryAPI.getLowStockReport();
-      setLowStockReport(response.data.products || []);
+      const reportData = response.data;
+      setLowStockReport(reportData.products || []);
+      console.log('✅ Reporte de stock bajo cargado:', (reportData.products || []).length);
     } catch (error) {
-      console.error('Error cargando reporte de stock bajo:', error);
+      console.error('❌ Error cargando reporte de stock bajo:', error);
+      setLowStockReport([]);
     }
   };
 
   const createPurchaseOrder = async (e) => {
-  e.preventDefault();
-  
-  if (newPO.items.length === 0) {
-    showAlert('Agregue al menos un producto a la orden', 'warning');
-    return;
-  }
-
-  if (!newPO.supplier) {
-    showAlert('Seleccione un proveedor', 'warning');
-    return;
-  }
-
-  try {
-    // Preparar datos de la orden - CORRECCIÓN APLICADA
-    const orderData = {
-      supplier: Number(newPO.supplier), // Asegurar que sea número
-      expected_date: newPO.expected_date || null,
-      notes: newPO.notes || '',
-      items: newPO.items.map(item => ({
-        product: Number(item.product), // Asegurar que sea número
-        quantity_ordered: Number(item.quantity_ordered), // Asegurar que sea número
-        unit_price: Number(item.unit_price) // Asegurar que sea número
-      }))
-    };
-
-    console.log('Enviando orden de compra:', orderData);
+    e.preventDefault();
     
-    const response = await inventoryAPI.createPurchaseOrder(orderData);
-    console.log('Respuesta de orden:', response);
-    
-    showAlert('Orden de compra creada exitosamente', 'success');
-    setShowPOModal(false);
-    setNewPO({ supplier: '', expected_date: '', notes: '', items: [] });
-    loadPurchaseOrders();
-    
-  } catch (error) {
-    console.error('Error creando orden:', error);
-    handleApiError(error, 'Error creando orden de compra');
-  }
-};
+    if (newPO.items.length === 0) {
+      showAlert('Agregue al menos un producto a la orden', 'warning');
+      return;
+    }
+
+    if (!newPO.supplier) {
+      showAlert('Seleccione un proveedor', 'warning');
+      return;
+    }
+
+    try {
+      // Preparar datos de la orden
+      const orderData = {
+        supplier: Number(newPO.supplier),
+        expected_date: newPO.expected_date || null,
+        notes: newPO.notes || '',
+        items: newPO.items.map(item => ({
+          product: Number(item.product),
+          quantity_ordered: Number(item.quantity_ordered),
+          unit_price: Number(item.unit_price)
+        }))
+      };
+
+      console.log('📤 Enviando orden de compra:', orderData);
+      
+      const response = await inventoryAPI.createPurchaseOrder(orderData);
+      console.log('✅ Respuesta de orden:', response);
+      
+      showAlert('Orden de compra creada exitosamente', 'success');
+      setShowPOModal(false);
+      setNewPO({ supplier: '', expected_date: '', notes: '', items: [] });
+      await loadPurchaseOrders();
+      
+    } catch (error) {
+      console.error('❌ Error creando orden:', error);
+      handleApiError(error, 'Error creando orden de compra');
+    }
+  };
 
   const approvePurchaseOrder = async (po) => {
     if (window.confirm(`¿Aprobar la orden de compra ${po.order_number}?`)) {
       try {
         await inventoryAPI.approvePurchaseOrder(po.id);
         showAlert('Orden de compra aprobada', 'success');
-        loadPurchaseOrders();
+        await loadPurchaseOrders();
       } catch (error) {
-        console.error('Error aprobando orden:', error);
+        console.error('❌ Error aprobando orden:', error);
         showAlert('Error aprobando orden', 'danger');
       }
     }
@@ -177,7 +256,10 @@ const Inventory = () => {
 
   const addItemToPO = (productId) => {
     const product = products.find(p => p.id === parseInt(productId));
-    if (!product) return;
+    if (!product) {
+      showAlert('Producto no encontrado', 'warning');
+      return;
+    }
 
     const quantity = prompt('Cantidad a ordenar:');
     if (!quantity || quantity <= 0) return;
@@ -206,9 +288,9 @@ const Inventory = () => {
       showAlert('Conteo de inventario creado exitosamente', 'success');
       setShowCountModal(false);
       setNewCount({ description: '', scheduled_date: '', notes: '' });
-      loadInventoryCounts();
+      await loadInventoryCounts();
     } catch (error) {
-      console.error('Error creando conteo:', error);
+      console.error('❌ Error creando conteo:', error);
       showAlert('Error creando conteo de inventario', 'danger');
     }
   };
@@ -218,9 +300,9 @@ const Inventory = () => {
       try {
         await inventoryAPI.startInventoryCount(count.id);
         showAlert('Conteo de inventario iniciado', 'success');
-        loadInventoryCounts();
+        await loadInventoryCounts();
       } catch (error) {
-        console.error('Error iniciando conteo:', error);
+        console.error('❌ Error iniciando conteo:', error);
         showAlert('Error iniciando conteo', 'danger');
       }
     }
@@ -238,6 +320,25 @@ const Inventory = () => {
   return (
     <div className="inventory-page">
       <h1>Control de Inventario</h1>
+
+      {/* INFORMACIÓN DE DEBUG */}
+      <div className="card" style={{ backgroundColor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+        <h4>Estado del Sistema</h4>
+        <div className="grid grid-4">
+          <div>
+            <strong>Productos Cargados:</strong> {products.length}
+          </div>
+          <div>
+            <strong>Proveedores Cargados:</strong> {suppliers.length}
+          </div>
+          <div>
+            <strong>Tab Activa:</strong> {activeTab}
+          </div>
+          <div>
+            <strong>Estado:</strong> {loading ? 'Cargando...' : 'Listo'}
+          </div>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="tabs">
@@ -280,9 +381,11 @@ const Inventory = () => {
                   value={movementFilters.product}
                   onChange={(e) => setMovementFilters(prev => ({ ...prev, product: e.target.value }))}
                 >
-                  <option value="">Todos los productos</option>
+                  <option value="">Todos los productos ({products.length})</option>
                   {products.map(product => (
-                    <option key={product.id} value={product.id}>{product.name}</option>
+                    <option key={product.id} value={product.id}>
+                      {product.name} - {product.code}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -323,40 +426,46 @@ const Inventory = () => {
 
           <div className="card">
             <h2>Movimientos de Stock ({stockMovements.length})</h2>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Producto</th>
-                  <th>Tipo</th>
-                  <th>Cantidad</th>
-                  <th>Stock Antes</th>
-                  <th>Stock Después</th>
-                  <th>Usuario</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockMovements.map(movement => (
-                  <tr key={movement.id}>
-                    <td>{new Date(movement.movement_date).toLocaleDateString()}</td>
-                    <td>{movement.product_name}</td>
-                    <td>
-                      <span className={`alert ${
-                        movement.movement_type === 'IN' ? 'alert-success' :
-                        movement.movement_type === 'OUT' ? 'alert-danger' :
-                        'alert-warning'
-                      }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                        {movement.movement_type_display}
-                      </span>
-                    </td>
-                    <td>{movement.quantity}</td>
-                    <td>{movement.stock_before}</td>
-                    <td>{movement.stock_after}</td>
-                    <td>{movement.user_name}</td>
+            {stockMovements.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Producto</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Stock Antes</th>
+                    <th>Stock Después</th>
+                    <th>Usuario</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {stockMovements.map(movement => (
+                    <tr key={movement.id}>
+                      <td>{new Date(movement.movement_date).toLocaleDateString()}</td>
+                      <td>{movement.product_name}</td>
+                      <td>
+                        <span className={`alert ${
+                          movement.movement_type === 'IN' ? 'alert-success' :
+                          movement.movement_type === 'OUT' ? 'alert-danger' :
+                          'alert-warning'
+                        }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                          {movement.movement_type_display}
+                        </span>
+                      </td>
+                      <td>{movement.quantity}</td>
+                      <td>{movement.stock_before}</td>
+                      <td>{movement.stock_after}</td>
+                      <td>{movement.user_name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="alert alert-info">
+                No hay movimientos de stock para mostrar
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -372,54 +481,61 @@ const Inventory = () => {
           </div>
 
           <div className="card">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Proveedor</th>
-                  <th>Estado</th>
-                  <th>Fecha Orden</th>
-                  <th>Total</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {purchaseOrders.map(po => (
-                  <tr key={po.id}>
-                    <td>{po.order_number}</td>
-                    <td>{po.supplier_name}</td>
-                    <td>
-                      <span className={`alert ${
-                        po.status === 'RECEIVED' ? 'alert-success' :
-                        po.status === 'APPROVED' ? 'alert-info' :
-                        po.status === 'PENDING' ? 'alert-warning' :
-                        'alert-secondary'
-                      }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                        {po.status_display}
-                      </span>
-                    </td>
-                    <td>{new Date(po.order_date).toLocaleDateString()}</td>
-                    <td>{formatCurrency(po.total)}</td>
-                    <td>
-                      {po.status === 'PENDING' && (
-                        <button 
-                          className="btn btn-small btn-success"
-                          onClick={() => approvePurchaseOrder(po)}
-                        >
-                          Aprobar
-                        </button>
-                      )}
-                      <button 
-                        className="btn btn-small btn-primary"
-                        onClick={() => setSelectedPO(po)}
-                      >
-                        Ver
-                      </button>
-                    </td>
+            <h3>Órdenes de Compra ({purchaseOrders.length})</h3>
+            {purchaseOrders.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Número</th>
+                    <th>Proveedor</th>
+                    <th>Estado</th>
+                    <th>Fecha Orden</th>
+                    <th>Total</th>
+                    <th>Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {purchaseOrders.map(po => (
+                    <tr key={po.id}>
+                      <td>{po.order_number}</td>
+                      <td>{po.supplier_name}</td>
+                      <td>
+                        <span className={`alert ${
+                          po.status === 'RECEIVED' ? 'alert-success' :
+                          po.status === 'APPROVED' ? 'alert-info' :
+                          po.status === 'PENDING' ? 'alert-warning' :
+                          'alert-secondary'
+                        }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                          {po.status_display}
+                        </span>
+                      </td>
+                      <td>{new Date(po.order_date).toLocaleDateString()}</td>
+                      <td>{formatCurrency(po.total)}</td>
+                      <td>
+                        {po.status === 'PENDING' && (
+                          <button 
+                            className="btn btn-small btn-success"
+                            onClick={() => approvePurchaseOrder(po)}
+                          >
+                            Aprobar
+                          </button>
+                        )}
+                        <button 
+                          className="btn btn-small btn-primary"
+                          onClick={() => setSelectedPO(po)}
+                        >
+                          Ver
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="alert alert-info">
+                No hay órdenes de compra creadas
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -435,47 +551,54 @@ const Inventory = () => {
           </div>
 
           <div className="card">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Número</th>
-                  <th>Descripción</th>
-                  <th>Estado</th>
-                  <th>Fecha Programada</th>
-                  <th>Responsable</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventoryCounts.map(count => (
-                  <tr key={count.id}>
-                    <td>{count.count_number}</td>
-                    <td>{count.description}</td>
-                    <td>
-                      <span className={`alert ${
-                        count.status === 'COMPLETED' ? 'alert-success' :
-                        count.status === 'IN_PROGRESS' ? 'alert-warning' :
-                        'alert-info'
-                      }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
-                        {count.status_display}
-                      </span>
-                    </td>
-                    <td>{new Date(count.scheduled_date).toLocaleDateString()}</td>
-                    <td>{count.responsible_name}</td>
-                    <td>
-                      {count.status === 'PLANNED' && (
-                        <button 
-                          className="btn btn-small btn-success"
-                          onClick={() => startInventoryCount(count)}
-                        >
-                          Iniciar
-                        </button>
-                      )}
-                    </td>
+            <h3>Conteos de Inventario ({inventoryCounts.length})</h3>
+            {inventoryCounts.length > 0 ? (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Número</th>
+                    <th>Descripción</th>
+                    <th>Estado</th>
+                    <th>Fecha Programada</th>
+                    <th>Responsable</th>
+                    <th>Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {inventoryCounts.map(count => (
+                    <tr key={count.id}>
+                      <td>{count.count_number}</td>
+                      <td>{count.description}</td>
+                      <td>
+                        <span className={`alert ${
+                          count.status === 'COMPLETED' ? 'alert-success' :
+                          count.status === 'IN_PROGRESS' ? 'alert-warning' :
+                          'alert-info'
+                        }`} style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}>
+                          {count.status_display}
+                        </span>
+                      </td>
+                      <td>{new Date(count.scheduled_date).toLocaleDateString()}</td>
+                      <td>{count.responsible_name}</td>
+                      <td>
+                        {count.status === 'PLANNED' && (
+                          <button 
+                            className="btn btn-small btn-success"
+                            onClick={() => startInventoryCount(count)}
+                          >
+                            Iniciar
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="alert alert-info">
+                No hay conteos de inventario programados
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -506,11 +629,11 @@ const Inventory = () => {
                       <td>{item.current_stock}</td>
                       <td>{item.min_stock}</td>
                       <td>
-                            {item.days_of_stock !== null && item.days_of_stock !== undefined && !isNaN(item.days_of_stock) 
-                              ? Number(item.days_of_stock).toFixed(1) 
-                              : 'N/A'
-                            }
-                          </td>
+                        {item.days_of_stock !== null && item.days_of_stock !== undefined && !isNaN(item.days_of_stock) 
+                          ? Number(item.days_of_stock).toFixed(1) 
+                          : 'N/A'
+                        }
+                      </td>
                       <td>{item.suggested_order}</td>
                       <td>
                         <span className={`alert ${
@@ -526,7 +649,9 @@ const Inventory = () => {
                 </tbody>
               </table>
             ) : (
-              <p>No hay productos con stock bajo</p>
+              <div className="alert alert-success">
+                ¡Excelente! No hay productos con stock bajo
+              </div>
             )}
           </div>
         </div>
@@ -575,7 +700,7 @@ const Inventory = () => {
                   onChange={(e) => addItemToPO(e.target.value)}
                   value=""
                 >
-                  <option value="">Seleccionar producto para agregar</option>
+                  <option value="">Seleccionar producto ({products.length} disponibles)</option>
                   {products.map(product => (
                     <option key={product.id} value={product.id}>
                       {product.name} - Stock: {product.current_stock}

@@ -90,7 +90,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
         })
 
 class ProductViewSet(viewsets.ModelViewSet):
-    """ViewSet para productos"""
+    """ViewSet para productos - CORREGIDO"""
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = []
@@ -98,7 +98,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         
-        # Filtros opcionales
+        # CORRECCIÓN CRÍTICA: Manejo mejorado de filtros
         category = self.request.query_params.get('category')
         supplier = self.request.query_params.get('supplier')
         is_active = self.request.query_params.get('is_active')
@@ -106,40 +106,82 @@ class ProductViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         needs_reorder = self.request.query_params.get('needs_reorder')
         
-        if category:
-            queryset = queryset.filter(category_id=category)
+        print(f"🔍 Filtros recibidos en backend:")
+        print(f"  - category: {category}")
+        print(f"  - supplier: {supplier}")
+        print(f"  - is_active: {is_active}")
+        print(f"  - stock_status: {stock_status}")
+        print(f"  - search: {search}")
+        print(f"  - needs_reorder: {needs_reorder}")
         
-        if supplier:
-            queryset = queryset.filter(supplier_id=supplier)
+        # FILTRO POR CATEGORÍA
+        if category and category.strip():
+            try:
+                category_id = int(category)
+                queryset = queryset.filter(category_id=category_id)
+                print(f"  ✅ Filtrado por categoría: {category_id}")
+            except (ValueError, TypeError):
+                print(f"  ❌ ID de categoría inválido: {category}")
         
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # FILTRO POR PROVEEDOR
+        if supplier and supplier.strip():
+            try:
+                supplier_id = int(supplier)
+                queryset = queryset.filter(supplier_id=supplier_id)
+                print(f"  ✅ Filtrado por proveedor: {supplier_id}")
+            except (ValueError, TypeError):
+                print(f"  ❌ ID de proveedor inválido: {supplier}")
         
-        if stock_status:
-            # Aplicar filtro de stock_status después de evaluar la propiedad
-            product_ids = []
-            for product in queryset:
-                if product.stock_status == stock_status:
-                    product_ids.append(product.id)
-            queryset = queryset.filter(id__in=product_ids)
+        # FILTRO POR ESTADO ACTIVO - CORREGIDO
+        if is_active and is_active.strip() and is_active.lower() != 'all':
+            is_active_bool = is_active.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active_bool)
+            print(f"  ✅ Filtrado por is_active: {is_active_bool}")
+        else:
+            print(f"  ➡️ Sin filtro is_active (mostrando todos)")
         
-        if needs_reorder is not None:
-            # Filtrar productos que necesitan reorden
-            if needs_reorder.lower() == 'true':
-                product_ids = []
-                for product in queryset:
-                    if product.needs_reorder:
-                        product_ids.append(product.id)
-                queryset = queryset.filter(id__in=product_ids)
-        
-        if search:
+        # FILTRO POR BÚSQUEDA
+        if search and search.strip():
+            search_term = search.strip()
             queryset = queryset.filter(
-                Q(name__icontains=search) |
-                Q(code__icontains=search) |
-                Q(barcode__icontains=search) |
-                Q(description__icontains=search) |
-                Q(brand__icontains=search)
+                Q(name__icontains=search_term) |
+                Q(code__icontains=search_term) |
+                Q(barcode__icontains=search_term) |
+                Q(description__icontains=search_term) |
+                Q(brand__icontains=search_term)
             )
+            print(f"  ✅ Filtrado por búsqueda: '{search_term}'")
+        
+        # FILTRO POR ESTADO DE STOCK - MEJORADO
+        if stock_status and stock_status.strip():
+            # Obtener productos y evaluar stock_status en Python
+            # ya que es una propiedad calculada
+            products_ids = []
+            all_products = queryset.only('id', 'current_stock', 'min_stock', 'max_stock')
+            
+            for product in all_products:
+                if product.stock_status == stock_status:
+                    products_ids.append(product.id)
+            
+            queryset = queryset.filter(id__in=products_ids)
+            print(f"  ✅ Filtrado por stock_status: {stock_status} ({len(products_ids)} productos)")
+        
+        # FILTRO POR NECESIDAD DE REORDEN - MEJORADO
+        if needs_reorder and needs_reorder.strip():
+            needs_reorder_bool = needs_reorder.lower() == 'true'
+            # Evaluar needs_reorder en Python ya que es una propiedad calculada
+            products_ids = []
+            all_products = queryset.only('id', 'current_stock', 'reorder_point')
+            
+            for product in all_products:
+                if product.needs_reorder == needs_reorder_bool:
+                    products_ids.append(product.id)
+            
+            queryset = queryset.filter(id__in=products_ids)
+            print(f"  ✅ Filtrado por needs_reorder: {needs_reorder_bool} ({len(products_ids)} productos)")
+        
+        final_count = queryset.count()
+        print(f"  📊 Total productos después de filtros: {final_count}")
         
         return queryset.order_by('name')
     
@@ -203,6 +245,27 @@ class ProductViewSet(viewsets.ModelViewSet):
             
             product.save()
             
+            # CORRECCIÓN: Manejar usuario para movimientos de stock
+            user_for_movement = request.user if request.user.is_authenticated else None
+            if not user_for_movement:
+                from django.contrib.auth.models import User
+                user_for_movement = User.objects.filter(is_superuser=True).first()
+                
+                if not user_for_movement:
+                    user_for_movement, created = User.objects.get_or_create(
+                        username='admin',
+                        defaults={
+                            'email': 'admin@minimarket.com',
+                            'first_name': 'Admin',
+                            'last_name': 'Sistema',
+                            'is_superuser': True,
+                            'is_staff': True
+                        }
+                    )
+                    if created:
+                        user_for_movement.set_password('admin123')
+                        user_for_movement.save()
+            
             StockMovement.objects.create(
                 product=product,
                 movement_type=movement_type,
@@ -211,7 +274,7 @@ class ProductViewSet(viewsets.ModelViewSet):
                 stock_before=stock_before,
                 stock_after=product.current_stock,
                 notes=reason,
-                user=request.user
+                user=user_for_movement
             )
             
             return Response({

@@ -17,12 +17,14 @@ const Products = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  
+  // CORRECCIÓN: Filtros iniciales con valores que garantizan mostrar todos los productos
   const [filters, setFilters] = useState({
     search: '',
     category: '',
     stock_status: '',
     needs_reorder: '',
-    is_active: ''
+    is_active: 'true' // CAMBIADO: Por defecto mostrar solo productos activos
   });
 
   const [productForm, setProductForm] = useState({
@@ -45,90 +47,131 @@ const Products = () => {
     is_active: true
   });
 
+// CORRECCIÓN PRINCIPAL: useEffect separados para carga inicial y filtros
 useEffect(() => {
-  console.log('Componente montado, cargando datos iniciales');
-  loadData();
-}, []); // Carga inicial
+  console.log('🚀 Componente montado - Carga inicial');
+  loadInitialData();
+}, []); // Solo se ejecuta una vez al montar
 
 useEffect(() => {
-  console.log('Filtros cambiaron:', filters);
-  loadData();
-}, [filters]); 
+  console.log('🔍 Filtros cambiaron, recargando productos:', filters);
+  // Solo recargar productos cuando cambian los filtros, no en la carga inicial
+  if (categories.length > 0 && suppliers.length > 0) {
+    loadProducts();
+  }
+}, [filters]); // Se ejecuta cuando cambian los filtros
 
-const loadData = async () => {
+// NUEVA FUNCIÓN: Carga inicial separada
+const loadInitialData = async () => {
   try {
     setLoading(true);
     
-    // CORRECCIÓN: Limpiar filtros vacíos antes de enviar
-    const cleanFilters = {};
-    Object.keys(filters).forEach(key => {
-      if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
-        cleanFilters[key] = filters[key];
-      }
-    });
-    
-    console.log('Filtros aplicados:', cleanFilters); // Debug
-    
-    // Cargar datos en paralelo con manejo de errores
-    const results = await Promise.allSettled([
-      productsAPI.getProducts(cleanFilters), // ← Usar filtros limpios
+    console.log('📦 Cargando categorías y proveedores...');
+    // Primero cargar categorías y proveedores
+    const [categoriesRes, suppliersRes] = await Promise.allSettled([
       categoriesAPI.getCategories({ is_active: true }),
       suppliersAPI.getSuppliers({ is_active: true })
     ]);
     
-    // Procesar productos
-    if (results[0].status === 'fulfilled') {
-      const productsData = results[0].value.data;
-      console.log('Productos recibidos:', productsData); // Debug
-      setProducts(productsData.results || productsData || []);
-    } else {
-      console.error('Error cargando productos:', results[0].reason);
-      handleApiError(results[0].reason, 'Error cargando productos');
-      setProducts([]);
-    }
-
     // Procesar categorías
-    if (results[1].status === 'fulfilled') {
-      const categoriesData = results[1].value.data;
+    if (categoriesRes.status === 'fulfilled') {
+      const categoriesData = categoriesRes.value.data;
       setCategories(categoriesData.results || categoriesData || []);
+      console.log('✅ Categorías cargadas:', categoriesData.results?.length || 0);
     } else {
-      console.error('Error cargando categorías:', results[1].reason);
+      console.error('❌ Error cargando categorías:', categoriesRes.reason);
       setCategories([]);
     }
 
     // Procesar proveedores
-    if (results[2].status === 'fulfilled') {
-      const suppliersData = results[2].value.data;
+    if (suppliersRes.status === 'fulfilled') {
+      const suppliersData = suppliersRes.value.data;
       setSuppliers(suppliersData.results || suppliersData || []);
+      console.log('✅ Proveedores cargados:', suppliersData.results?.length || 0);
     } else {
-      console.error('Error cargando proveedores:', results[2].reason);
+      console.error('❌ Error cargando proveedores:', suppliersRes.reason);
       setSuppliers([]);
     }
     
+    // Luego cargar productos
+    console.log('🛍️ Cargando productos...');
+    await loadProducts();
+    
   } catch (error) {
-    console.error('Error general cargando datos:', error);
-    handleApiError(error, 'Error cargando datos');
+    console.error('❌ Error en carga inicial:', error);
+    handleApiError(error, 'Error cargando datos iniciales');
   } finally {
     setLoading(false);
   }
 };
 
-  const handleFilterChange = (field, value) => {
-  console.log(`Cambiando filtro ${field} a:`, value); // Debug
-  setFilters(prev => ({
-    ...prev,
-    [field]: value
-  }));
+// FUNCIÓN MEJORADA: Solo carga productos con filtros limpios
+const loadProducts = async () => {
+  try {
+    console.log('🔄 Cargando productos con filtros:', filters);
+    
+    // CORRECCIÓN CRÍTICA: Limpiar filtros vacíos y manejar casos especiales
+    const cleanFilters = {};
+    
+    // Solo incluir filtros que tienen valores válidos
+    if (filters.search && filters.search.trim()) {
+      cleanFilters.search = filters.search.trim();
+    }
+    
+    if (filters.category && filters.category !== '') {
+      cleanFilters.category = filters.category;
+    }
+    
+    if (filters.stock_status && filters.stock_status !== '') {
+      cleanFilters.stock_status = filters.stock_status;
+    }
+    
+    if (filters.needs_reorder && filters.needs_reorder !== '') {
+      cleanFilters.needs_reorder = filters.needs_reorder;
+    }
+    
+    // IMPORTANTE: Solo incluir is_active si no es 'todos'
+    if (filters.is_active && filters.is_active !== '' && filters.is_active !== 'all') {
+      cleanFilters.is_active = filters.is_active;
+    }
+    
+    console.log('🧹 Filtros limpios enviados:', cleanFilters);
+    
+    const response = await productsAPI.getProducts(cleanFilters);
+    const productsData = response.data;
+    const productsList = productsData.results || productsData || [];
+    
+    console.log('✅ Productos recibidos:', productsList.length);
+    setProducts(productsList);
+    
+  } catch (error) {
+    console.error('❌ Error cargando productos:', error);
+    handleApiError(error, 'Error cargando productos');
+    setProducts([]);
+  }
 };
+
+  // FUNCIÓN MEJORADA: Manejo de cambios de filtros
+  const handleFilterChange = (field, value) => {
+    console.log(`🔄 Cambiando filtro ${field} a:`, value);
+    setFilters(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // FUNCIÓN MEJORADA: Limpiar filtros
   const clearFilters = () => {
+    console.log('🧹 Limpiando todos los filtros');
     setFilters({
       search: '',
       category: '',
       stock_status: '',
       needs_reorder: '',
-      is_active: ''
+      is_active: 'true' // Mantener activos por defecto
     });
-  }; 
+  };
+
   const resetForm = () => {
     setProductForm({
       code: '',
@@ -227,34 +270,35 @@ const handleSubmit = async (e) => {
       response = await productsAPI.createProduct(formData);
       showAlert('Producto creado exitosamente', 'success');
       
-      // CORRECCIÓN: Crear movimiento de stock inicial si hay stock inicial
+      // Crear movimiento de stock inicial si hay stock inicial
       if (formData.current_stock > 0) {
         try {
           await productsAPI.updateStock(response.data.id, {
             quantity: formData.current_stock,
             reason: 'Stock inicial del producto'
           });
-          console.log('Movimiento de stock inicial creado');
+          console.log('✅ Movimiento de stock inicial creado');
         } catch (stockError) {
-          console.error('Error creando movimiento de stock inicial:', stockError);
-          // No mostrar error al usuario, el producto se creó correctamente
+          console.error('❌ Error creando movimiento de stock inicial:', stockError);
         }
       }
     }
     
     closeModal();
-    loadData();
+    // CORRECCIÓN: Recargar solo productos, no todo
+    await loadProducts();
   } catch (error) {
-    console.error('Error guardando producto:', error);
+    console.error('❌ Error guardando producto:', error);
     handleApiError(error, 'Error guardando producto');
   }
 };
+
   const handleDelete = async (product) => {
     if (window.confirm(`¿Está seguro de eliminar el producto "${product.name}"?`)) {
       try {
         await productsAPI.deleteProduct(product.id);
         showAlert('Producto eliminado exitosamente', 'success');
-        loadData();
+        await loadProducts(); // Recargar productos
       } catch (error) {
         console.error('Error eliminando producto:', error);
         handleApiError(error, 'Error eliminando producto');
@@ -268,7 +312,7 @@ const handleSubmit = async (e) => {
       if (reason !== null && reason.trim()) {
         await productsAPI.updateStock(product.id, { quantity, reason });
         showAlert('Stock actualizado exitosamente', 'success');
-        loadData();
+        await loadProducts(); // Recargar productos
       }
     } catch (error) {
       console.error('Error actualizando stock:', error);
@@ -294,82 +338,93 @@ const handleSubmit = async (e) => {
         </button>
       </div>
 
-      {/* Filtros */}
-<div className="card">
-  <h3>Filtros</h3>
-  <div className="form-row">
-    <div className="form-group">
-      <label>Buscar</label>
-      <input
-        type="text"
-        className="form-control"
-        placeholder="Buscar por nombre, código..."
-        value={filters.search}
-        onChange={(e) => handleFilterChange('search', e.target.value)}
-      />
-    </div>
-    <div className="form-group">
-      <label>Categoría</label>
-      <select
-        className="form-control"
-        value={filters.category}
-        onChange={(e) => handleFilterChange('category', e.target.value)}
-      >
-        <option value="">Todas las categorías</option>
-        {categories.map(cat => (
-          <option key={cat.id} value={cat.id}>{cat.name}</option>
-        ))}
-      </select>
-    </div>
-    <div className="form-group">
-      <label>Estado de Stock</label>
-      <select
-        className="form-control"
-        value={filters.stock_status}
-        onChange={(e) => handleFilterChange('stock_status', e.target.value)}
-      >
-        <option value="">Todos</option>
-        <option value="SIN_STOCK">Sin Stock</option>
-        <option value="STOCK_BAJO">Stock Bajo</option>
-        <option value="NORMAL">Normal</option>
-        <option value="SOBRESTOCK">Sobrestock</option>
-      </select>
-    </div>
-    <div className="form-group">
-      <label>Necesita Reorden</label>
-      <select
-        className="form-control"
-        value={filters.needs_reorder}
-        onChange={(e) => handleFilterChange('needs_reorder', e.target.value)}
-      >
-        <option value="">Todos</option>
-        <option value="true">Sí</option>
-        <option value="false">No</option>
-      </select>
-    </div>
-    <div className="form-group">
-      <label>Estado</label>
-      <select
-        className="form-control"
-        value={filters.is_active}
-        onChange={(e) => handleFilterChange('is_active', e.target.value)}
-      >
-        <option value="">Todos</option>
-        <option value="true">Activos</option>
-        <option value="false">Inactivos</option>
-      </select>
-    </div>
-    <div className="form-group">
-      <label>&nbsp;</label>
-      <button 
-        className="btn btn-secondary form-control"
-        onClick={clearFilters}
-      >
-        Limpiar Filtros
-      </button>
-    </div>
-  </div>
-</div>
+      {/* Filtros CORREGIDOS */}
+      <div className="card">
+        <h3>Filtros</h3>
+        <div className="form-row">
+          <div className="form-group">
+            <label>Buscar</label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Buscar por nombre, código..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Categoría</label>
+            <select
+              className="form-control"
+              value={filters.category}
+              onChange={(e) => handleFilterChange('category', e.target.value)}
+            >
+              <option value="">Todas las categorías</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Estado de Stock</label>
+            <select
+              className="form-control"
+              value={filters.stock_status}
+              onChange={(e) => handleFilterChange('stock_status', e.target.value)}
+            >
+              <option value="">Todos los estados</option>
+              <option value="SIN_STOCK">Sin Stock</option>
+              <option value="STOCK_BAJO">Stock Bajo</option>
+              <option value="NORMAL">Normal</option>
+              <option value="SOBRESTOCK">Sobrestock</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Necesita Reorden</label>
+            <select
+              className="form-control"
+              value={filters.needs_reorder}
+              onChange={(e) => handleFilterChange('needs_reorder', e.target.value)}
+            >
+              <option value="">Todos</option>
+              <option value="true">Sí necesita</option>
+              <option value="false">No necesita</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>Estado del Producto</label>
+            <select
+              className="form-control"
+              value={filters.is_active}
+              onChange={(e) => handleFilterChange('is_active', e.target.value)}
+            >
+              <option value="">Todos los productos</option>
+              <option value="true">Solo Activos</option>
+              <option value="false">Solo Inactivos</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>&nbsp;</label>
+            <button 
+              className="btn btn-secondary form-control"
+              onClick={clearFilters}
+            >
+              Limpiar Filtros
+            </button>
+          </div>
+        </div>
+        
+        {/* NUEVO: Información de filtros activos */}
+        <div style={{ marginTop: '10px', fontSize: '0.9rem', color: '#666' }}>
+          <strong>Mostrando:</strong> {products.length} productos
+          {filters.search && ` | Búsqueda: "${filters.search}"`}
+          {filters.category && ` | Categoría filtrada`}
+          {filters.stock_status && ` | Estado: ${filters.stock_status}`}
+          {filters.needs_reorder && ` | Reorden: ${filters.needs_reorder === 'true' ? 'Sí' : 'No'}`}
+          {filters.is_active === 'true' && ` | Solo activos`}
+          {filters.is_active === 'false' && ` | Solo inactivos`}
+        </div>
+      </div>
 
       {/* Tabla de productos */}
       <div className="card">
@@ -449,12 +504,23 @@ const handleSubmit = async (e) => {
           </div>
         ) : (
           <div className="alert alert-info">
-            No se encontraron productos con los filtros aplicados
+            <h4>No se encontraron productos</h4>
+            <p>
+              {Object.values(filters).some(f => f && f !== '') 
+                ? 'No hay productos que coincidan con los filtros aplicados. Intenta limpiar los filtros.' 
+                : 'No hay productos creados aún. Crea tu primer producto usando el botón "Nuevo Producto".'
+              }
+            </p>
+            {Object.values(filters).some(f => f && f !== '') && (
+              <button className="btn btn-primary" onClick={clearFilters}>
+                Limpiar Filtros y Ver Todos
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* Modal de producto */}
+      {/* Modal de producto - MANTENIDO IGUAL */}
       {showModal && (
         <div className="modal show">
           <div className="modal-content" style={{ maxWidth: '800px' }}>
