@@ -21,19 +21,22 @@ const Suppliers = () => {
   });
 
   const loadSuppliers = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await suppliersAPI.getSuppliers(filters);
-      const suppliersData = response.data;
-      setSuppliers(suppliersData.results || suppliersData || []);
-    } catch (error) {
-      console.error('Error cargando proveedores:', error);
-      handleApiError(error, 'Error cargando proveedores');
-      setSuppliers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+  try {
+    setLoading(true);
+    
+    // CORRECCIÓN: Enviar filtros directamente sin limpiar
+    console.log('🏭 Filtros de proveedores:', filters);
+    const response = await suppliersAPI.getSuppliers(filters);
+    const suppliersData = response.data;
+    setSuppliers(suppliersData.results || suppliersData || []);
+  } catch (error) {
+    console.error('Error cargando proveedores:', error);
+    handleApiError(error, 'Error cargando proveedores');
+    setSuppliers([]);
+  } finally {
+    setLoading(false);
+  }
+}, [filters]);
 
   useEffect(() => {
     loadSuppliers();

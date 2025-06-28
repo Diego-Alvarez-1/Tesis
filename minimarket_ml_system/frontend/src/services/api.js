@@ -70,11 +70,11 @@ api.interceptors.response.use(
 export const productsAPI = {
   // GET /api/products/products/
 getProducts: (params = {}) => {
-    const cleanedParams = cleanParams(params);
-    console.log('📦 Productos - Parámetros originales:', params);
-    console.log('📦 Productos - Parámetros limpios:', cleanedParams);
-    return api.get('/products/products/', { params: cleanedParams });
-  },  
+  const cleanedParams = cleanParams(params);
+  console.log('📦 Productos - Parámetros originales:', params);
+  console.log('📦 Productos - Parámetros limpios:', cleanedParams);
+  return api.get('/products/products/', { params: cleanedParams });
+},  
   // GET /api/products/products/{id}/
   getProduct: (id) => api.get(`/products/products/${id}/`),
   
@@ -540,20 +540,22 @@ export const cleanParams = (params = {}) => {
   Object.keys(params).forEach(key => {
     const value = params[key];
     
-    // Solo incluir valores que NO sean:
-    // - null
-    // - undefined  
-    // - string vacío ""
-    // - string solo con espacios "   "
+    // CORRECCIÓN CRÍTICA: Solo incluir parámetros con valores reales
+    // Excluir: null, undefined, strings vacíos, "todos", "all"
     if (
       value !== null && 
       value !== undefined && 
-      value !== '' && 
+      value !== '' &&
+      value !== 'todos' &&
+      value !== 'all' &&
       !(typeof value === 'string' && value.trim() === '')
     ) {
       cleaned[key] = value;
     }
   });
+  
+  console.log('🧹 cleanParams - Original:', params);
+  console.log('🧹 cleanParams - Limpio:', cleaned);
   
   return cleaned;
 };

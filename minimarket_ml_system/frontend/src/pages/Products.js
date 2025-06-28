@@ -24,7 +24,7 @@ const Products = () => {
     category: '',
     stock_status: '',
     needs_reorder: '',
-    is_active: 'true' // CAMBIADO: Por defecto mostrar solo productos activos
+    is_active: '' 
   });
 
   const [productForm, setProductForm] = useState({
@@ -61,7 +61,6 @@ useEffect(() => {
   }
 }, [filters]); // Se ejecuta cuando cambian los filtros
 
-// NUEVA FUNCIÓN: Carga inicial separada
 const loadInitialData = async () => {
   try {
     setLoading(true);
@@ -93,9 +92,13 @@ const loadInitialData = async () => {
       setSuppliers([]);
     }
     
-    // Luego cargar productos
-    console.log('🛍️ Cargando productos...');
-    await loadProducts();
+    // CORRECCIÓN CRÍTICA: Cargar productos sin filtros restrictivos
+    console.log('🛍️ Cargando todos los productos...');
+    const productsResponse = await productsAPI.getProducts({});
+    const productsData = productsResponse.data;
+    const productsList = productsData.results || productsData || [];
+    setProducts(productsList);
+    console.log('✅ Productos cargados:', productsList.length);
     
   } catch (error) {
     console.error('❌ Error en carga inicial:', error);
@@ -168,7 +171,7 @@ const loadProducts = async () => {
       category: '',
       stock_status: '',
       needs_reorder: '',
-      is_active: 'true' // Mantener activos por defecto
+      is_active: '' 
     });
   };
 

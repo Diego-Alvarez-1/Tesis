@@ -87,8 +87,8 @@ const Analytics = () => {
   }, [selectedPeriod]);
 
   useEffect(() => {
-    loadAnalyticsData();
-  }, [loadAnalyticsData]);
+  loadAnalyticsData();
+}, [selectedPeriod]); 
 
   const runAnalysis = async () => {
     try {

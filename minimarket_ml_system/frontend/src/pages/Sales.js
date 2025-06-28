@@ -49,20 +49,24 @@ const Sales = () => {
     loadCustomers();
   }, []);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const response = await salesAPI.getSales(filters);
-      const salesData = response.data;
-      setSales(salesData.results || salesData || []);
-    } catch (error) {
-      console.error('Error cargando ventas:', error);
-      handleApiError(error, 'Error cargando ventas');
-      setSales([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+const loadData = async () => {
+  try {
+    setLoading(true);
+    
+    // CORRECCIÓN: Enviar filtros sin limpiar
+    console.log('💰 Filtros de ventas:', filters);
+    const response = await salesAPI.getSales(filters);
+    const salesData = response.data;
+    setSales(salesData.results || salesData || []);
+    console.log('✅ Ventas cargadas:', (salesData.results || salesData || []).length);
+  } catch (error) {
+    console.error('Error cargando ventas:', error);
+    handleApiError(error, 'Error cargando ventas');
+    setSales([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const loadProducts = async () => {
     try {

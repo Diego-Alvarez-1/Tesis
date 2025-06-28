@@ -17,20 +17,23 @@ const Categories = () => {
     is_active: true
   });
 
-  const loadCategories = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await categoriesAPI.getCategories(filters);
-      const categoriesData = response.data;
-      setCategories(categoriesData.results || categoriesData || []);
-    } catch (error) {
-      console.error('Error cargando categorías:', error);
-      handleApiError(error, 'Error cargando categorías');
-      setCategories([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+const loadCategories = useCallback(async () => {
+  try {
+    setLoading(true);
+    
+    // CORRECCIÓN: Enviar filtros directamente
+    console.log('📂 Filtros de categorías:', filters);
+    const response = await categoriesAPI.getCategories(filters);
+    const categoriesData = response.data;
+    setCategories(categoriesData.results || categoriesData || []);
+  } catch (error) {
+    console.error('Error cargando categorías:', error);
+    handleApiError(error, 'Error cargando categorías');
+    setCategories([]);
+  } finally {
+    setLoading(false);
+  }
+}, [filters]);
 
   useEffect(() => {
     loadCategories();

@@ -40,11 +40,23 @@ class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
         if reason:
             queryset = queryset.filter(reason=reason)
         
-        if date_from:
-            queryset = queryset.filter(movement_date__date__gte=date_from)
-        
-        if date_to:
-            queryset = queryset.filter(movement_date__date__lte=date_to)
+        if date_from and date_from.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(movement_date__date__gte=date_obj)
+                print(f"  ✅ Filtrado movimientos desde: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_from: {date_from}")
+
+        if date_to and date_to.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(movement_date__date__lte=date_obj)
+                print(f"  ✅ Filtrado movimientos hasta: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_to: {date_to}")
         
         return queryset.order_by('-movement_date')
     

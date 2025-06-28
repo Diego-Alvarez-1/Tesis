@@ -34,7 +34,7 @@ const Predictions = () => {
       // Cargar datos en paralelo
       const results = await Promise.allSettled([
         mlAPI.getModels(),
-        productsAPI.getProducts({ is_active: true, page_size: 1000 }),
+        productsAPI.getProducts({ page_size: 1000 }),
         mlAPI.getReorderRecommendations({ limit: 20 })
       ]);
       

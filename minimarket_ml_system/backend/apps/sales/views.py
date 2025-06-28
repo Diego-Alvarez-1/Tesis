@@ -29,26 +29,47 @@ class CustomerViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get('search')
         has_credit = self.request.query_params.get('has_credit')
         
-        if customer_type:
+        print(f"🔍 Filtros de clientes recibidos:")
+        print(f"  - customer_type: {customer_type}")
+        print(f"  - is_active: {is_active}")
+        print(f"  - search: {search}")
+        print(f"  - has_credit: {has_credit}")
+        
+        # FILTRO POR TIPO DE CLIENTE
+        if customer_type and customer_type.strip() and customer_type.lower() not in ['todos', 'all', '']:
             queryset = queryset.filter(customer_type=customer_type)
+            print(f"  ✅ Filtrado por customer_type: {customer_type}")
         
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        # FILTRO POR ESTADO ACTIVO
+        if is_active and is_active.strip() and is_active.lower() not in ['todos', 'all', '']:
+            is_active_bool = is_active.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active_bool)
+            print(f"  ✅ Filtrado por is_active: {is_active_bool}")
+        else:
+            print(f"  ➡️ Sin filtro is_active (mostrando todos los clientes)")
         
-        if has_credit is not None:
+        # FILTRO POR CRÉDITO
+        if has_credit and has_credit.strip() and has_credit.lower() not in ['todos', 'all', '']:
             if has_credit.lower() == 'true':
                 queryset = queryset.filter(credit_limit__gt=0)
             else:
                 queryset = queryset.filter(credit_limit=0)
+            print(f"  ✅ Filtrado por has_credit: {has_credit}")
         
-        if search:
+        # FILTRO POR BÚSQUEDA
+        if search and search.strip():
+            search_term = search.strip()
             queryset = queryset.filter(
-                Q(first_name__icontains=search) |
-                Q(last_name__icontains=search) |
-                Q(document_number__icontains=search) |
-                Q(email__icontains=search) |
-                Q(phone__icontains=search)
+                Q(first_name__icontains=search_term) |
+                Q(last_name__icontains=search_term) |
+                Q(document_number__icontains=search_term) |
+                Q(email__icontains=search_term) |
+                Q(phone__icontains=search_term)
             )
+            print(f"  ✅ Filtrado por búsqueda: '{search_term}'")
+        
+        final_count = queryset.count()
+        print(f"  📊 Total clientes después de filtros: {final_count}")
         
         return queryset.order_by('last_name', 'first_name')
     
@@ -118,11 +139,23 @@ class SaleViewSet(viewsets.ModelViewSet):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         
-        if date_from:
-            queryset = queryset.filter(sale_date__date__gte=date_from)
-        
-        if date_to:
-            queryset = queryset.filter(sale_date__date__lte=date_to)
+        if date_from and date_from.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(sale_date__date__gte=date_obj)
+                print(f"  ✅ Filtrado desde: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_from: {date_from}")
+
+        if date_to and date_to.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(sale_date__date__lte=date_obj)
+                print(f"  ✅ Filtrado hasta: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_to: {date_to}")
         
         if search:
             queryset = queryset.filter(
@@ -328,11 +361,30 @@ class DailySummaryViewSet(viewsets.ReadOnlyModelViewSet):
         date_from = self.request.query_params.get('date_from')
         date_to = self.request.query_params.get('date_to')
         
-        if date_from:
-            queryset = queryset.filter(date__gte=date_from)
+        print(f"🔍 Filtros de resúmenes diarios:")
+        print(f"  - date_from: {date_from}")
+        print(f"  - date_to: {date_to}")
         
-        if date_to:
-            queryset = queryset.filter(date__lte=date_to)
+        if date_from and date_from.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(date__gte=date_obj)
+                print(f"  ✅ Filtrado desde: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_from: {date_from}")
+
+        if date_to and date_to.strip():
+            try:
+                from datetime import datetime
+                date_obj = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(date__lte=date_obj)
+                print(f"  ✅ Filtrado hasta: {date_obj}")
+            except ValueError:
+                print(f"  ❌ Fecha inválida date_to: {date_to}")
+        
+        final_count = queryset.count()
+        print(f"  📊 Total resúmenes después de filtros: {final_count}")
         
         return queryset.order_by('-date')
     

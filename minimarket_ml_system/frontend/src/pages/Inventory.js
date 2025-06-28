@@ -75,7 +75,7 @@ const Inventory = () => {
       
       // CORRECCIÓN CRÍTICA: Cargar todos los productos activos sin filtros restrictivos
       const [productsRes, suppliersRes] = await Promise.allSettled([
-        productsAPI.getProducts({ is_active: true, page_size: 1000 }), // Aumentar límite
+        productsAPI.getProducts({ page_size: 1000 }),
         suppliersAPI.getSuppliers({ is_active: true, page_size: 1000 })
       ]);
       
@@ -138,27 +138,20 @@ const Inventory = () => {
     }
   };
 
-  const loadStockMovements = async () => {
-    try {
-      console.log('🔄 Cargando movimientos de stock con filtros:', movementFilters);
-      
-      // Limpiar filtros vacíos
-      const cleanFilters = {};
-      Object.keys(movementFilters).forEach(key => {
-        if (movementFilters[key] !== '' && movementFilters[key] !== null && movementFilters[key] !== undefined) {
-          cleanFilters[key] = movementFilters[key];
-        }
-      });
-      
-      const response = await inventoryAPI.getStockMovements(cleanFilters);
-      const movementsData = response.data;
-      setStockMovements(movementsData.results || movementsData || []);
-      console.log('✅ Movimientos de stock cargados:', (movementsData.results || movementsData || []).length);
-    } catch (error) {
-      console.error('❌ Error cargando movimientos:', error);
-      setStockMovements([]);
-    }
-  };
+const loadStockMovements = async () => {
+  try {
+    console.log('🔄 Cargando movimientos con filtros:', movementFilters);
+    
+    // CORRECCIÓN: Enviar filtros tal como están
+    const response = await inventoryAPI.getStockMovements(movementFilters);
+    const movementsData = response.data;
+    setStockMovements(movementsData.results || movementsData || []);
+    console.log('✅ Movimientos cargados:', (movementsData.results || movementsData || []).length);
+  } catch (error) {
+    console.error('❌ Error cargando movimientos:', error);
+    setStockMovements([]);
+  }
+};
 
   const loadPurchaseOrders = async () => {
     try {

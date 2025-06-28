@@ -31,29 +31,23 @@ const Customers = () => {
     is_active: true
   });
 
-  const loadCustomers = useCallback(async () => {
-    try {
-      setLoading(true);
-      
-      // Filtrar parámetros vacíos antes de enviar al backend
-      const cleanFilters = {};
-      Object.keys(filters).forEach(key => {
-        if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
-          cleanFilters[key] = filters[key];
-        }
-      });
-      
-      const response = await customersAPI.getCustomers(cleanFilters);
-      const customersData = response.data;
-      setCustomers(customersData.results || customersData || []);
-    } catch (error) {
-      console.error('Error cargando clientes:', error);
-      handleApiError(error, 'Error cargando clientes');
-      setCustomers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+const loadCustomers = useCallback(async () => {
+  try {
+    setLoading(true);
+    
+    // CORRECCIÓN: Enviar filtros directamente
+    console.log('👥 Filtros de clientes:', filters);
+    const response = await customersAPI.getCustomers(filters);
+    const customersData = response.data;
+    setCustomers(customersData.results || customersData || []);
+  } catch (error) {
+    console.error('Error cargando clientes:', error);
+    handleApiError(error, 'Error cargando clientes');
+    setCustomers([]);
+  } finally {
+    setLoading(false);
+  }
+}, [filters]);
 
   useEffect(() => {
     loadCustomers();

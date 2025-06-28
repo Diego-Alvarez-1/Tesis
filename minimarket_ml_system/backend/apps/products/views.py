@@ -27,14 +27,21 @@ class CategoryViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active')
         search = self.request.query_params.get('search')
         
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        print(f"🔍 Filtros de categorías recibidos: search={search}, is_active={is_active}")
+        
+        if is_active and is_active.strip() and is_active.lower() not in ['all', 'todos', '']:
+            is_active_bool = is_active.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active_bool)
+            print(f"  ✅ Filtrado por is_active: {is_active_bool}")
+        else:
+            print(f"  ➡️ Sin filtro is_active (mostrando todas las categorías)")
         
         if search:
             queryset = queryset.filter(
                 Q(name__icontains=search) |
                 Q(description__icontains=search)
             )
+            print(f"  ✅ Filtrado por búsqueda: '{search}'")
         
         return queryset.order_by('name')
     
@@ -64,8 +71,14 @@ class SupplierViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get('is_active')
         search = self.request.query_params.get('search')
         
-        if is_active is not None:
-            queryset = queryset.filter(is_active=is_active.lower() == 'true')
+        print(f"🔍 Filtros de proveedores recibidos: search={search}, is_active={is_active}")
+        
+        if is_active and is_active.strip() and is_active.lower() not in ['all', 'todos', '']:
+            is_active_bool = is_active.lower() == 'true'
+            queryset = queryset.filter(is_active=is_active_bool)
+            print(f"  ✅ Filtrado por is_active: {is_active_bool}")
+        else:
+            print(f"  ➡️ Sin filtro is_active (mostrando todos los proveedores)")
         
         if search:
             queryset = queryset.filter(
@@ -73,6 +86,7 @@ class SupplierViewSet(viewsets.ModelViewSet):
                 Q(ruc__icontains=search) |
                 Q(email__icontains=search)
             )
+            print(f"  ✅ Filtrado por búsqueda: '{search}'")
         
         return queryset.order_by('name')
     
@@ -133,12 +147,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                 print(f"  ❌ ID de proveedor inválido: {supplier}")
         
         # FILTRO POR ESTADO ACTIVO - CORREGIDO
-        if is_active and is_active.strip() and is_active.lower() != 'all':
+        if is_active and is_active.strip() and is_active.lower() not in ['all', 'todos', '']:
             is_active_bool = is_active.lower() == 'true'
             queryset = queryset.filter(is_active=is_active_bool)
             print(f"  ✅ Filtrado por is_active: {is_active_bool}")
         else:
-            print(f"  ➡️ Sin filtro is_active (mostrando todos)")
+            print(f"  ➡️ Sin filtro is_active (mostrando todos los productos)")
         
         # FILTRO POR BÚSQUEDA
         if search and search.strip():
